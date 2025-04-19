@@ -16,10 +16,11 @@ export NEWSAPI_KEY="YOUR_KEY_HERE"
 > _Help: Replace "YOUR_KEY_HERE" with your own NEWSAPI API Key. Get your API Key [here](https://newsapi.org)._ 
 5. Enter your parameters and if successful outputs will appear in your "stock_plots" folder:
 ```python
-python stock_forecast_with_sentiment.py \
+python3 stock_forecast_with_sentiment.py \
   --tickers AAPL,NVDA,AVGO,MSFT,BA,AMZN,GOOGL,META,NFLX,TSLA \
   --start 2010-01-01 \
   --end   2025-04-19 \
   --outdir ./stock_plots \
   --pagesize 5
 ```
+> _Help: If Python is not installed then you came unprepared._ 
