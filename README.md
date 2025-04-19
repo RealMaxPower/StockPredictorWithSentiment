@@ -2,7 +2,7 @@
 This Python script uses historical stock trends and the latest news using NEWSAPI for sentiment scores to predict stock price for next 12 months in the future.
 
 # Instructions
-1. Download [StockPredictorWithSentiment.py](StockPredictorWithSentiment.py) locally to /Documents/Stocks
+1. Download [Stock Predictor With Sentiment.py](https://github.com/RealMaxPower/StockPredictorWithSentiment/blob/main/Stock%20Predictor%20with%20Sentiment.py) locally to /Documents/Stocks
 2. Open Terminal
 3. Open directory with the downloaded python script
 ```
