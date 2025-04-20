@@ -1,4 +1,4 @@
-# StockPredictorWithSentiment
+# Stock Predictor With Sentiment
 This Python script uses historical stock trends and the latest news using NEWSAPI for sentiment scores to predict stock price for next 12 months in the future.
 
 # Instructions
@@ -23,4 +23,4 @@ python3 stock_forecast_with_sentiment.py \
   --outdir ./stock_plots \
   --pagesize 5
 ```
-> _Help: If Python is not installed then you came unprepared._ 
+> _Help: If Python is not installed then you came unprepared. You can also check out this [article](https://www.geeksforgeeks.org/download-and-install-python-3-latest-version/)._ 
