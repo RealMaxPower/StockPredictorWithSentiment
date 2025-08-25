@@ -10,6 +10,9 @@ import argparse
 import os
 import sys
 import json
+import time
+from datetime import datetime
+from typing import Tuple, List, Dict, Any
 
 import yfinance as yf
 import pandas as pd
@@ -17,6 +20,81 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import matplotlib.pyplot as plt
 from newsapi import NewsApiClient
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+
+def create_date_specific_output_dir(base_dir: str) -> str:
+    """
+    Create a date-specific subdirectory within the base output directory.
+    Returns the path to the date-specific directory.
+    """
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    date_dir = os.path.join(base_dir, current_date)
+    os.makedirs(date_dir, exist_ok=True)
+    return date_dir
+
+
+def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
+                                sentiment_analyzer: SentimentIntensityAnalyzer,
+                                ticker: str,
+                                page_size: int = 5,
+                                max_retries: int = 3,
+                                timeout: int = 10) -> Tuple[List[Dict[str, Any]], float]:
+    """
+    Fetch top `page_size` headlines mentioning the ticker with retry logic and timeout handling.
+    Includes exponential backoff for failed requests.
+    """
+    for attempt in range(max_retries):
+        try:
+            print(f"Fetching news for {ticker} (attempt {attempt + 1}/{max_retries})...")
+            
+            # Note: newsapi-python doesn't directly support timeout, but we can add a delay
+            # to simulate rate limiting and reduce the chance of timeouts
+            if attempt > 0:
+                wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
+                print(f"Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+            
+            resp = newsapi.get_top_headlines(
+                q=ticker,
+                category='business',
+                page_size=page_size
+            )
+            
+            if resp is None:
+                raise Exception("NewsAPI returned None response")
+                
+            articles = resp.get('articles', [])
+            if not articles and attempt < max_retries - 1:
+                print(f"No articles found for {ticker}, retrying...")
+                continue
+                
+            results = []
+            sentiments = []
+            for art in articles:
+                title = art.get('title', '')
+                desc = art.get('description') or ''
+                combined = f"{title}. {desc}"
+                score = sentiment_analyzer.polarity_scores(combined)['compound']
+                sentiments.append(score)
+                results.append({
+                    'title': title,
+                    'description': desc,
+                    'url': art.get('url'),
+                    'sentiment': score
+                })
+            
+            avg_sentiment = (sum(sentiments) / len(sentiments)) if sentiments else 0.0
+            print(f"Successfully fetched {len(results)} articles for {ticker}")
+            return results, avg_sentiment
+            
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed for {ticker}: {e}")
+            if attempt == max_retries - 1:
+                print(f"All attempts failed for {ticker}, using empty news data")
+                return [], 0.0
+            
+    # This should never be reached, but included for completeness
+    return [], 0.0
 
 
 def fetch_and_forecast(ticker: str, start: str, end: str):
@@ -45,30 +123,11 @@ def fetch_ticker_news(newsapi: NewsApiClient,
                       ticker: str,
                       page_size: int = 5):
     """
+    Legacy wrapper for backward compatibility.
     Fetch top `page_size` headlines mentioning the ticker,
     compute VADER sentiment for each, and return list of dicts.
     """
-    resp = newsapi.get_top_headlines(
-        q=ticker,
-        category='business',
-        page_size=page_size
-    )
-    articles = resp.get('articles', [])
-    results = []
-    sentiments = []
-    for art in articles:
-        title = art.get('title', '')
-        desc = art.get('description') or ''
-        combined = f"{title}. {desc}"
-        score = sentiment_analyzer.polarity_scores(combined)['compound']
-        sentiments.append(score)
-        results.append({
-            'title': title,
-            'description': desc,
-            'url': art.get('url'),
-            'sentiment': score
-        })
-    return results, (sum(sentiments) / len(sentiments)) if sentiments else 0.0
+    return fetch_ticker_news_with_retry(newsapi, sentiment_analyzer, ticker, page_size)
 
 
 def adjust_forecast(forecast: pd.Series, sentiment_score: float):
@@ -135,6 +194,10 @@ def main():
 
     # Prepare output directory
     os.makedirs(args.outdir, exist_ok=True)
+    
+    # Create date-specific subdirectory for this run
+    date_specific_dir = create_date_specific_output_dir(args.outdir)
+    print(f"Saving outputs to date-specific directory: {date_specific_dir}")
 
     # Check NewsAPI key
     news_api_key = os.getenv('NEWSAPI_KEY')
@@ -149,16 +212,22 @@ def main():
         print('Error: No valid tickers provided.', file=sys.stderr)
         sys.exit(1)
 
-    for ticker in tickers:
+    for i, ticker in enumerate(tickers):
         try:
             print(f"Processing {ticker} from {args.start} to {args.end}...")
+            
+            # Add a small delay between tickers to be nice to APIs (except for first ticker)
+            if i > 0:
+                print("Waiting 1 second between API calls...")
+                time.sleep(1)
+            
             monthly, forecast = fetch_and_forecast(ticker, args.start, args.end)
 
             # Fetch news and compute sentiment
             news_items, avg_sentiment = fetch_ticker_news(
                 newsapi, sentiment_analyzer, ticker, page_size=args.pagesize
             )
-            news_path = os.path.join(args.outdir, f"{ticker}_news.json")
+            news_path = os.path.join(date_specific_dir, f"{ticker}_news.json")
             with open(news_path, 'w') as nf:
                 json.dump(news_items, nf, indent=2)
             print(f"Saved news: {news_path} (avg sentiment: {avg_sentiment:.3f})")
@@ -167,7 +236,7 @@ def main():
             adjusted = adjust_forecast(forecast, avg_sentiment)
 
             # Plot and save
-            plot_and_save(monthly, forecast, adjusted, ticker, args.outdir)
+            plot_and_save(monthly, forecast, adjusted, ticker, date_specific_dir)
 
         except Exception as ex:
             print(f"Failed {ticker}: {ex}", file=sys.stderr)
