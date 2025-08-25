@@ -22,6 +22,56 @@ from newsapi import NewsApiClient
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 
+def ticker_to_company_name(ticker: str) -> str:
+    """
+    Convert stock ticker to company name for better news search results.
+    Returns company name if mapping exists, otherwise returns the original ticker.
+    """
+    ticker_mapping = {
+        'AAPL': 'Apple',
+        'MSFT': 'Microsoft',
+        'GOOGL': 'Google',
+        'GOOG': 'Google',
+        'AMZN': 'Amazon',
+        'TSLA': 'Tesla',
+        'META': 'Meta',
+        'NVDA': 'NVIDIA',
+        'NFLX': 'Netflix',
+        'BA': 'Boeing',
+        'JPM': 'JPMorgan',
+        'JNJ': 'Johnson & Johnson',
+        'V': 'Visa',
+        'PG': 'Procter & Gamble',
+        'UNH': 'UnitedHealth',
+        'HD': 'Home Depot',
+        'MA': 'Mastercard',
+        'PFE': 'Pfizer',
+        'DIS': 'Disney',
+        'VZ': 'Verizon',
+        'ADBE': 'Adobe',
+        'NFLX': 'Netflix',
+        'KO': 'Coca-Cola',
+        'PEP': 'PepsiCo',
+        'T': 'AT&T',
+        'CVX': 'Chevron',
+        'WMT': 'Walmart',
+        'XOM': 'ExxonMobil',
+        'INTC': 'Intel',
+        'IBM': 'IBM',
+        'ORCL': 'Oracle',
+        'CSCO': 'Cisco',
+        'CRM': 'Salesforce',
+        'AVGO': 'Broadcom',
+        'GME': 'GameStop',
+        'AMC': 'AMC Entertainment',
+        'BB': 'BlackBerry',
+        'NOK': 'Nokia',
+        'PLTR': 'Palantir',
+        'RBLX': 'Roblox'
+    }
+    return ticker_mapping.get(ticker.upper(), ticker)
+
+
 def create_date_specific_output_dir(base_dir: str) -> str:
     """
     Create a date-specific subdirectory within the base output directory.
@@ -43,9 +93,13 @@ def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
     Fetch top `page_size` headlines mentioning the ticker with retry logic and timeout handling.
     Includes exponential backoff for failed requests.
     """
+    # Convert ticker to company name for better news search results
+    company_name = ticker_to_company_name(ticker)
+    search_term = company_name if company_name != ticker else ticker
+    
     for attempt in range(max_retries):
         try:
-            print(f"Fetching news for {ticker} (attempt {attempt + 1}/{max_retries})...")
+            print(f"Fetching news for {ticker} (searching for '{search_term}') (attempt {attempt + 1}/{max_retries})...")
             
             # Note: newsapi-python doesn't directly support timeout, but we can add a delay
             # to simulate rate limiting and reduce the chance of timeouts
@@ -55,7 +109,7 @@ def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
                 time.sleep(wait_time)
             
             resp = newsapi.get_top_headlines(
-                q=ticker,
+                q=search_term,
                 category='business',
                 page_size=page_size
             )
@@ -65,7 +119,7 @@ def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
                 
             articles = resp.get('articles', [])
             if not articles and attempt < max_retries - 1:
-                print(f"No articles found for {ticker}, retrying...")
+                print(f"No articles found for {search_term}, retrying...")
                 continue
                 
             results = []
