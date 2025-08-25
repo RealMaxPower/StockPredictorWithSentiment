@@ -36,12 +36,17 @@ def create_date_specific_output_dir(base_dir: str) -> str:
 def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
                                 sentiment_analyzer: SentimentIntensityAnalyzer,
                                 ticker: str,
+                                start_date: str = None,
+                                end_date: str = None,
                                 page_size: int = 5,
                                 max_retries: int = 3,
                                 timeout: int = 10) -> Tuple[List[Dict[str, Any]], float]:
     """
     Fetch top `page_size` headlines mentioning the ticker with retry logic and timeout handling.
     Includes exponential backoff for failed requests.
+    
+    :param start_date: Start date for news search in YYYY-MM-DD format (optional)
+    :param end_date: End date for news search in YYYY-MM-DD format (optional)
     """
     for attempt in range(max_retries):
         try:
@@ -54,9 +59,12 @@ def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
                 print(f"Waiting {wait_time} seconds before retry...")
                 time.sleep(wait_time)
             
-            resp = newsapi.get_top_headlines(
+            resp = newsapi.get_everything(
                 q=ticker,
-                category='business',
+                from_param=start_date,
+                to=end_date,
+                language='en',
+                sort_by='relevancy',
                 page_size=page_size
             )
             
@@ -121,13 +129,18 @@ def fetch_and_forecast(ticker: str, start: str, end: str):
 def fetch_ticker_news(newsapi: NewsApiClient,
                       sentiment_analyzer: SentimentIntensityAnalyzer,
                       ticker: str,
+                      start_date: str = None,
+                      end_date: str = None,
                       page_size: int = 5):
     """
     Legacy wrapper for backward compatibility.
     Fetch top `page_size` headlines mentioning the ticker,
     compute VADER sentiment for each, and return list of dicts.
+    
+    :param start_date: Start date for news search in YYYY-MM-DD format (optional)
+    :param end_date: End date for news search in YYYY-MM-DD format (optional)
     """
-    return fetch_ticker_news_with_retry(newsapi, sentiment_analyzer, ticker, page_size)
+    return fetch_ticker_news_with_retry(newsapi, sentiment_analyzer, ticker, start_date, end_date, page_size)
 
 
 def adjust_forecast(forecast: pd.Series, sentiment_score: float):
@@ -225,7 +238,7 @@ def main():
 
             # Fetch news and compute sentiment
             news_items, avg_sentiment = fetch_ticker_news(
-                newsapi, sentiment_analyzer, ticker, page_size=args.pagesize
+                newsapi, sentiment_analyzer, ticker, args.start, args.end, page_size=args.pagesize
             )
             news_path = os.path.join(date_specific_dir, f"{ticker}_news.json")
             with open(news_path, 'w') as nf:
