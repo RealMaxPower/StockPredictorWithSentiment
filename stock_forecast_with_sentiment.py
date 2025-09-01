@@ -11,7 +11,7 @@ import os
 import sys
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Tuple, List, Dict, Any
 
 import yfinance as yf
@@ -92,70 +92,99 @@ def fetch_ticker_news_with_retry(newsapi: NewsApiClient,
                                 max_retries: int = 3,
                                 timeout: int = 10) -> Tuple[List[Dict[str, Any]], float]:
     """
-    Fetch top `page_size` headlines mentioning the ticker with retry logic and timeout handling.
-    Includes exponential backoff for failed requests.
-    
-    :param start_date: Start date for news search in YYYY-MM-DD format (optional)
-    :param end_date: End date for news search in YYYY-MM-DD format (optional)
+    Fetch headlines with retry/backoff. First try last 30 days (UTC) for NewsAPI,
+    then fall back to no date filters if the plan rejects the range.
     """
-    # Convert ticker to company name for better news search results
-    company_name = ticker_to_company_name(ticker)
-    search_term = company_name if company_name != ticker else ticker
-    
+    # Force last 30 days window (first attempt)
+    end_dt = datetime.utcnow().date()
+    start_dt = end_dt - timedelta(days=30)
+    # Use YYYY-MM-DD format only
+    forced_from = start_dt.isoformat()  
+    forced_to   = end_dt.isoformat()    
+
+    company = ticker_to_company_name(ticker.upper())
+    query = f"\"{company}\" OR {ticker.upper()}"
+    print(f"NewsAPI query for {ticker}: {query}")
+    print(f"NewsAPI date window for {ticker}: {forced_from} to {forced_to}")
+
+    tried_without_dates = False
+
     for attempt in range(max_retries):
         try:
-            print(f"Fetching news for {ticker} (searching for '{search_term}') (attempt {attempt + 1}/{max_retries})...")
-            
-            # Note: newsapi-python doesn't directly support timeout, but we can add a delay
-            # to simulate rate limiting and reduce the chance of timeouts
             if attempt > 0:
-                wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
-                print(f"Waiting {wait_time} seconds before retry...")
-                time.sleep(wait_time)
-            
-            resp = newsapi.get_everything(
-                q=ticker,
-                from_param=start_date,
-                to=end_date,
-                language='en',
-                sort_by='relevancy',
-                page_size=page_size
-            )
-            
-            if resp is None:
-                raise Exception("NewsAPI returned None response")
-                
-            articles = resp.get('articles', [])
-            if not articles and attempt < max_retries - 1:
-                print(f"No articles found for {search_term}, retrying...")
+                wait = 2 ** attempt
+                print(f"Waiting {wait}s before retry...")
+                time.sleep(wait)
+
+            kwargs = {
+                "q": query,
+                "language": "en",
+                "sort_by": "relevancy",
+                "page_size": page_size,
+            }
+            # Include date filters on first passes; drop if plan rejects them
+            if not tried_without_dates:
+                kwargs["from_param"] = forced_from
+                kwargs["to"] = forced_to
+
+            resp = newsapi.get_everything(**kwargs)
+
+            # Explicitly handle error-style responses from NewsAPI
+            if resp.get("code"):
+                code = resp.get("code", "")
+                msg = resp.get("message", "")
+                print(f"NewsAPI error ({code}): {msg}")
+                if (code == "parameterInvalid" and "far in the past" in msg) and not tried_without_dates:
+                    print("Retrying without date filters due to NewsAPI plan limits...")
+                    tried_without_dates = True
+                    continue
+                # For any other error, try next attempt (or exit on last)
+                if attempt == max_retries - 1:
+                    return [], 0.0
                 continue
-                
-            results = []
-            sentiments = []
+
+            articles = (resp or {}).get("articles", []) or []
+            if not articles:
+                # If no results with dates, try once without dates
+                if not tried_without_dates:
+                    print("No articles with date filters; retrying without date filters...")
+                    tried_without_dates = True
+                    continue
+                if attempt < max_retries - 1:
+                    print("No articles; retrying...")
+                    continue
+
+            results, sentiments = [], []
             for art in articles:
-                title = art.get('title', '')
-                desc = art.get('description') or ''
-                combined = f"{title}. {desc}"
-                score = sentiment_analyzer.polarity_scores(combined)['compound']
+                title = art.get("title", "") or ""
+                desc = art.get("description") or ""
+                combined = f"{title}. {desc}".strip(". ")
+                score = sentiment_analyzer.polarity_scores(combined)["compound"]
                 sentiments.append(score)
                 results.append({
-                    'title': title,
-                    'description': desc,
-                    'url': art.get('url'),
-                    'sentiment': score
+                    "title": title,
+                    "description": desc,
+                    "url": art.get("url"),
+                    "source": (art.get("source") or {}).get("name"),
+                    "publishedAt": art.get("publishedAt"),
+                    "sentiment": score,
                 })
-            
+
             avg_sentiment = (sum(sentiments) / len(sentiments)) if sentiments else 0.0
             print(f"Successfully fetched {len(results)} articles for {ticker}")
             return results, avg_sentiment
-            
+
         except Exception as e:
-            print(f"Attempt {attempt + 1} failed for {ticker}: {e}")
+            msg = str(e)
+            print(f"Attempt {attempt + 1} failed for {ticker}: {msg}")
+            if (("parameterInvalid" in msg) or ("too far in the past" in msg)) and not tried_without_dates:
+                print("Retrying without date filters due to NewsAPI plan limits...")
+                tried_without_dates = True
+                continue
             if attempt == max_retries - 1:
                 print(f"All attempts failed for {ticker}, using empty news data")
                 return [], 0.0
-            
-    # This should never be reached, but included for completeness
+
     return [], 0.0
 
 
@@ -168,7 +197,7 @@ def fetch_and_forecast(ticker: str, start: str, end: str):
     df = yf.download(ticker, start=start, end=end, progress=False)
     if df.empty:
         raise ValueError(f"No data fetched for ticker '{ticker}'")
-    monthly = df['Close'].resample('M').mean().dropna()
+    monthly = df['Close'].resample('ME').mean().dropna()
     model = ExponentialSmoothing(
         monthly,
         trend='add',
@@ -187,14 +216,9 @@ def fetch_ticker_news(newsapi: NewsApiClient,
                       end_date: str = None,
                       page_size: int = 5):
     """
-    Legacy wrapper for backward compatibility.
-    Fetch top `page_size` headlines mentioning the ticker,
-    compute VADER sentiment for each, and return list of dicts.
-    
-    :param start_date: Start date for news search in YYYY-MM-DD format (optional)
-    :param end_date: End date for news search in YYYY-MM-DD format (optional)
+    Wrapper kept for compatibility. Ignores provided dates and uses last 30 days.
     """
-    return fetch_ticker_news_with_retry(newsapi, sentiment_analyzer, ticker, start_date, end_date, page_size)
+    return fetch_ticker_news_with_retry(newsapi, sentiment_analyzer, ticker, None, None, page_size)
 
 
 def adjust_forecast(forecast: pd.Series, sentiment_score: float):
@@ -290,9 +314,9 @@ def main():
             
             monthly, forecast = fetch_and_forecast(ticker, args.start, args.end)
 
-            # Fetch news and compute sentiment
+            # Fetch news and compute sentiment (do NOT pass CLI dates)
             news_items, avg_sentiment = fetch_ticker_news(
-                newsapi, sentiment_analyzer, ticker, args.start, args.end, page_size=args.pagesize
+                newsapi, sentiment_analyzer, ticker, page_size=args.pagesize
             )
             news_path = os.path.join(date_specific_dir, f"{ticker}_news.json")
             with open(news_path, 'w') as nf:

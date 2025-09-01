@@ -1,6 +1,28 @@
 # Stock Predictor With Sentiment
 This Python script uses historical stock trends and the latest news using NEWSAPI for sentiment scores to predict stock price for next 12 months in the future.
 
+## Prerequisites
+- Python 3.8+ installed
+  ```
+  python3 --version
+  ```
+- pip3 available
+  ```
+  which pip3
+  ```
+- Install required dependencies (allow 2–3 minutes; increase timeout to avoid network delays):
+  ```bash
+  export PIP_DEFAULT_TIMEOUT=300
+  pip3 install yfinance pandas statsmodels matplotlib newsapi-python vaderSentiment
+  # Optional pin:
+  # pip3 install yfinance==0.2.58
+  ```
+- Set your NewsAPI key (required):
+  ```bash
+  export NEWSAPI_KEY="YOUR_KEY_HERE"
+  ```
+  > Get your API Key here: https://newsapi.org
+
 # Instructions
 1. Download [stock_forecast_with_sentiment.py](https://github.com/RealMaxPower/StockPredictorWithSentiment/blob/main/stock_forecast_with_sentiment.py) locally to /Documents/Stocks
 2. Open Terminal
@@ -23,4 +45,4 @@ python3 stock_forecast_with_sentiment.py \
   --outdir ./stock_plots \
   --pagesize 5
 ```
-> _Help: If Python is not installed then you came unprepared. You can also check out this [article](https://www.geeksforgeeks.org/download-and-install-python-3-latest-version/)._ 
+> _Help: If Python is not installed then you came unprepared. You can also check out this [article](https://www.geeksforgeeks.org/download-and-install-python-3-latest-version/)._
