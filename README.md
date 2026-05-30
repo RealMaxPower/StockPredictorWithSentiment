@@ -1,99 +1,141 @@
 # Stock Predictor With Sentiment
-This Python script uses historical stock trends and the latest news using NEWSAPI for sentiment scores to predict stock price for next 12 months in the future.
 
-## Features
-- **Robust Error Handling**: Automatic retry logic with exponential backoff for API failures
-- **Smart Date Filtering**: Automatically adjusts date ranges based on NewsAPI plan limits
-- **Sentiment Analysis**: Uses VADER sentiment analysis for news impact assessment
-- **Forecast Adjustment**: Adjusts stock predictions based on news sentiment scores
-- **Comprehensive Output**: Generates both visual forecasts and detailed news data
+Forecasts the next 12 months of a stock's price from its history **with prediction
+intervals**, contextualizes it with recent news sentiment, and — crucially —
+**measures whether the forecast actually beats naive baselines** before you trust it.
 
-## Prerequisites
-- Python 3.8+ installed
-  ```
-  python3 --version
-  ```
-- pip3 available
-  ```
-  which pip3
-  ```
-- Install required dependencies (allow 2–3 minutes; increase timeout to avoid network delays):
-  ```bash
-  export PIP_DEFAULT_TIMEOUT=300
-  pip3 install yfinance pandas statsmodels matplotlib newsapi-python vaderSentiment
-  # Optional pin:
-  # pip3 install yfinance==0.2.58
-  ```
-- Set your NewsAPI key (required):
-  ```bash
-  export NEWSAPI_KEY="YOUR_KEY_HERE"
-  ```
-  > Get your API Key here: https://newsapi.org
+> ⚠️ **Educational demo — not financial advice.** Monthly price forecasting is hard;
+> the honest takeaway from the built-in backtest is usually "treat the wide
+> uncertainty band seriously." This tool is for learning, not trading.
 
-## Recent Improvements
-- **Fixed API Parameters**: Corrected NewsAPI client parameter names (`from_param`, `to`)
-- **Enhanced Error Handling**: Added proper error response handling for NewsAPI
-- **Deprecation Fixes**: Updated pandas resampling from deprecated `'M'` to `'ME'`
-- **Retry Logic**: Implemented intelligent retry mechanism with date filter fallback
-- **Better Logging**: Improved error messages and status reporting
+## What changed (v0.2)
 
-## Instructions
-1. Download [stock_forecast_with_sentiment.py](https://github.com/RealMaxPower/StockPredictorWithSentiment/blob/main/stock_forecast_with_sentiment.py) locally to /Documents/Stocks
-2. Open Terminal
-3. Open directory with the downloaded python script
-```
-cd "/Users/[user]/Documents/Stocks"
-```
-> _Help: Replace [user] with the active user main folder name_ 
-4. Add your NEWSAPI by running the below script:
+The original script multiplied the whole forecast by `(1 + sentiment)` — a single
+positive headline could inflate every forecast month by 50%, and nothing ever
+checked if the forecast was any good. v0.2 fixes the methodology and turns the
+script into a small, tested package:
+
+- **Bounded, decaying sentiment tilt** — the news effect is capped (±~5% in month 1)
+  and decays over the horizon, shrunk by a confidence score (sample size + agreement).
+  "No news" is distinct from "neutral"; `--no-sentiment` disables it entirely.
+- **Prediction intervals** — 80%/95% bands (Monte-Carlo simulation) instead of a
+  single deterministic line that implied false precision.
+- **Baselines + walk-forward backtest** — every run is scored against naive,
+  seasonal-naive, and drift via rolling-origin cross-validation, reporting
+  MAE/RMSE/MAPE/**MASE**/directional accuracy.
+- **Adjusted close + data guards** — splits/dividends no longer read as crashes;
+  seasonal fits require ≥24 months (else a non-seasonal fallback).
+- **Time-aligned news** — the news window is anchored to `--end` (not "now"), and
+  the free-tier 30-day limit is surfaced with a loud warning.
+- **Engineering** — a `stockpredictor/` package, a pytest suite (mocked network),
+  `ruff`/`mypy`, GitHub Actions CI, `pyproject.toml`, logging, and SQLite caching.
+- **Interfaces** — a Streamlit dashboard, interactive Plotly HTML, and optional
+  SARIMAX / gradient-boosting models compared on the same backtest.
+
+## Install
+
 ```bash
-export NEWSAPI_KEY="YOUR_KEY_HERE"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,viz,ml,app]"   # core + dev tools + plotly + scikit-learn + streamlit
 ```
-> _Help: Replace "YOUR_KEY_HERE" with your own NEWSAPI API Key. Get your API Key [here](https://newsapi.org)._ 
-5. Enter your parameters and if successful outputs will appear in your "stock_plots" folder:
+
+Pick fewer extras if you don't need everything: `viz` (interactive Plotly/HTML),
+`ml` (SARIMAX/gradient-boosting via scikit-learn), `app` (the Streamlit dashboard),
+`finbert` (finance-tuned sentiment), `dev` (pytest/ruff/mypy).
+
+Or run from a checkout without installing the package (core CLI only — no
+dashboard/Plotly/scikit-learn):
+
+```bash
+pip install -r requirements.txt
+python3 stock_forecast_with_sentiment.py --help
+```
+
+Set a (free) NewsAPI key to enable sentiment — **optional**; forecasts run without it:
+
+```bash
+cp .env.example .env   # then edit, or:
+export NEWSAPI_KEY="YOUR_KEY"     # get one at https://newsapi.org
+```
+
+## Usage
+
+### CLI
+
 ```bash
 python3 stock_forecast_with_sentiment.py \
-  --tickers AAPL,NVDA,AVGO,MSFT,BA,AMZN,GOOGL,META,NFLX,TSLA \
-  --start 2010-01-01 \
+  --tickers AAPL,NVDA,MSFT \
+  --start 2015-01-01 \
   --end   2025-08-29 \
   --outdir ./stock_plots \
-  --pagesize 5
+  --compare-models          # also backtest SARIMAX + gradient boosting
 ```
-> _Note: The end date (2025-08-29) represents the last Friday from today. To automatically update this date, run: `python3 update_readme_date.py`_
-> _Help: If Python is not installed then you came unprepared. You can also check out this [article](https://www.geeksforgeeks.org/download-and-install-python-3-latest-version/)._
 
-## How It Works
-1. **Data Collection**: Downloads historical stock data using yfinance
-2. **News Fetching**: Retrieves recent news articles for each ticker using NewsAPI
-3. **Sentiment Analysis**: Analyzes news sentiment using VADER sentiment analysis
-4. **Forecasting**: Uses Holt-Winters exponential smoothing for 12-month predictions
-5. **Adjustment**: Adjusts forecasts based on sentiment scores
-6. **Output**: Generates plots and saves detailed news data to JSON files
+After `pip install -e .` the console entry point `stock-forecast ...` works too.
 
-## Error Handling
-The script includes robust error handling for:
-- Network timeouts and connection issues
-- NewsAPI rate limiting and plan restrictions
-- Invalid ticker symbols
-- Missing or corrupted data
-- API parameter validation
+Useful flags: `--no-sentiment`, `--sentiment-model {vader,finbert}`, `--no-backtest`,
+`--compare-models`, `--no-cache`, `--db PATH`, `--log-level {DEBUG,INFO,WARNING,ERROR}`.
 
-## Output Structure
+Each run writes, per ticker, into `stock_plots/YYYY-MM-DD/`:
+`TICKER_forecasts.png`, `TICKER_forecast.html` (interactive), `TICKER_news.json`,
+and `TICKER_metrics.json` (forecast, intervals, backtest, sentiment).
+
+### Dashboard
+
+```bash
+streamlit run app.py     # needs the `app` extra (streamlit)
 ```
-stock_plots/
-├── YYYY-MM-DD/
-│   ├── TICKER_forecasts.png    # Visual forecast plots
-│   └── TICKER_news.json       # Detailed news data with sentiment scores
+
+Pick a ticker (or a preset watchlist), date range, and headline count; see the
+interactive chart with its uncertainty band, the sentiment, the backtest table,
+and the headlines that informed it.
+
+## How it works
+
+1. **Data** — daily *adjusted* close from yfinance, validated and resampled to monthly.
+2. **Forecast** — Holt-Winters (seasonal when ≥24 months) with simulated 80%/95% intervals.
+3. **Backtest** — rolling-origin folds score the model against naive/seasonal-naive/drift.
+4. **News** — NewsAPI articles in the window ending at `--end`, scored with VADER (or FinBERT).
+5. **Sentiment tilt** — a bounded, decaying, confidence-shrunk nudge — not a raw multiplier.
+6. **Output** — PNG + interactive HTML + JSON; optionally cached/recorded in SQLite.
+
+## Architecture
+
 ```
+stockpredictor/
+  config.py     constants + AppConfig + logging
+  data.py       price fetch (injectable) + validation + monthly resample
+  forecast.py   Holt-Winters + intervals + baselines + backtest + metrics
+  sentiment.py  scoring (VADER/FinBERT) + structured aggregation + bounded tilt
+  news.py       NewsAPI fetch with retry/backoff, window anchored to --end
+  plotting.py   matplotlib PNG (shaded intervals) + Plotly HTML
+  pipeline.py   run_ticker() — the shared core used by CLI and dashboard
+  models.py     SARIMAX / gradient-boosting + backtest-based selection
+  store.py      optional SQLite price cache + run history
+  cli.py        argparse entry point
+app.py          Streamlit dashboard
+stock_forecast_with_sentiment.py   backward-compatible shim
+```
+
+## Development
+
+```bash
+pytest -q --cov=stockpredictor    # tests (no network — clients are mocked)
+ruff check . && ruff format --check .
+mypy stockpredictor
+```
+
+CI runs lint + types + tests across Python 3.9/3.11/3.12, plus a `pip-audit` job.
 
 ## Automatic Date Updates
-The README includes an automatic date update feature:
-- **Update Script**: `update_readme_date.py` automatically calculates and updates the last Friday date
-- **Usage**: Run `python3 update_readme_date.py` to update the example command with the current last Friday
-- **Purpose**: Ensures examples always use recent, relevant dates for stock analysis
+
+`python3 update_readme_date.py` updates the example command's `--end` to the most
+recent Friday (now hardened against a missing/unwritable README and silent no-ops).
 
 ## Troubleshooting
-- **API Key Issues**: Ensure your NewsAPI key is valid and has sufficient quota
-- **Date Range Errors**: The script automatically handles NewsAPI plan limitations
-- **Network Issues**: Built-in retry logic handles temporary connection problems
-- **Memory Issues**: Large ticker lists may require more memory; process in smaller batches
+
+- **News window too old**: NewsAPI's free tier only serves ~30 days. If `--end` is
+  older, the run warns and falls back; the sentiment tilt stays bounded and small.
+- **Short history**: tickers with <24 monthly points fall back to a non-seasonal fit;
+  <6 points are skipped with a clear error.
+- **No NewsAPI key**: forecasts still run (sentiment is simply disabled).
