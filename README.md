@@ -139,3 +139,14 @@ recent Friday (now hardened against a missing/unwritable README and silent no-op
 - **Short history**: tickers with <24 monthly points fall back to a non-seasonal fit;
   <6 points are skipped with a clear error.
 - **No NewsAPI key**: forecasts still run (sentiment is simply disabled).
+
+## License
+
+Copyright © 2025–2026 Marshall Cahill
+
+This program is free software: you can redistribute it and/or modify it under the
+terms of the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`) as
+published by the Free Software Foundation. It is distributed in the hope that it
+will be useful, but **without any warranty**; without even the implied warranty of
+merchantability or fitness for a particular purpose. See the full license text in
+[LICENSE](LICENSE).

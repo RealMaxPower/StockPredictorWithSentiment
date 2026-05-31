@@ -17,6 +17,7 @@ import pandas as pd
 
 from . import config, data, forecast, news, sentiment
 from .forecast import ForecastResult
+from .sanitize import sanitize_ticker
 from .sentiment import Scorer, SentimentResult
 
 logger = logging.getLogger("stockpredictor.pipeline")
@@ -45,7 +46,8 @@ def run_ticker(
     compare_models: bool = False,
 ) -> TickerResult:
     """Fetch, forecast (with intervals + backtest), score news, and apply the tilt."""
-    ticker = ticker.upper()
+    # Validate before the symbol becomes a file name in persist_outputs/plotting.
+    ticker = sanitize_ticker(ticker)
     df = data.fetch_prices(ticker, cfg.start, cfg.end, downloader=price_downloader)
     monthly, warns = data.to_monthly(df, ticker)
 

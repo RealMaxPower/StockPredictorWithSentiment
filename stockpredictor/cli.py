@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 
 from . import config, data, forecast, pipeline
+from .sanitize import sanitize_ticker
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -91,8 +92,17 @@ def main(argv: list | None = None) -> int:
     args = _build_parser().parse_args(argv)
     logger = config.setup_logging(args.log_level)
 
+    tickers: list[str] = []
+    for raw in args.tickers.split(","):
+        if not raw.strip():
+            continue
+        try:
+            tickers.append(sanitize_ticker(raw))
+        except ValueError as exc:
+            logger.error("%s", exc)
+
     cfg = config.AppConfig(
-        tickers=[t.strip().upper() for t in args.tickers.split(",") if t.strip()],
+        tickers=tickers,
         start=args.start,
         end=args.end,
         outdir=args.outdir,

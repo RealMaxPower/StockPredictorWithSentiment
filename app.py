@@ -18,6 +18,7 @@ import streamlit as st
 
 from stockpredictor import config, news, plotting
 from stockpredictor.pipeline import run_ticker
+from stockpredictor.sanitize import escape_markdown, safe_url, sanitize_ticker
 
 PRESETS = {
     "Magnificent Seven": "AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA",
@@ -119,10 +120,13 @@ def _render_result(ticker: str, result, cfg) -> None:
         for art in result.articles:
             score = art.get("sentiment", 0.0)
             emoji = "🟢" if score > 0.05 else "🔴" if score < -0.05 else "⚪"
-            st.markdown(
-                f"{emoji} **[{art['title']}]({art.get('url', '#')})** "
-                f"— *{art.get('source') or 'unknown'}* ({score:+.2f})"
-            )
+            # News titles/URLs are untrusted: escape markdown and allow only
+            # http(s) links so a headline can't break out or inject a script URL.
+            title = escape_markdown(art.get("title") or "(untitled)")
+            source = escape_markdown(art.get("source") or "unknown")
+            url = safe_url(art.get("url"))
+            label = f"[{title}]({url})" if url else title
+            st.markdown(f"{emoji} **{label}** — *{source}* ({score:+.2f})")
 
 
 def _comparison_table(results: dict) -> pd.DataFrame:
@@ -174,9 +178,19 @@ def main() -> None:
         st.write("Set parameters in the sidebar and click **Run forecast**.")
         return
 
-    tickers = [t.strip().upper() for t in tickers_raw.split(",") if t.strip()]
+    tickers: list[str] = []
+    invalid: list[str] = []
+    for raw in tickers_raw.split(","):
+        if not raw.strip():
+            continue
+        try:
+            tickers.append(sanitize_ticker(raw))
+        except ValueError:
+            invalid.append(raw.strip())
+    if invalid:
+        st.warning("Ignored invalid ticker(s): " + ", ".join(invalid))
     if not tickers:
-        st.warning("Enter at least one ticker.")
+        st.warning("Enter at least one valid ticker.")
         return
 
     results: dict = {}
