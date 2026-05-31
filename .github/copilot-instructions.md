@@ -1,227 +1,85 @@
-# Stock Predictor With Sentiment Analysis
+# Stock Predictor With Sentiment — contributor guide
 
-**ALWAYS follow these instructions first and fallback to additional search and context gathering only if the information in the instructions is incomplete or found to be in error.**
+**Follow these instructions first; fall back to searching the code only if something here is incomplete or wrong.**
 
-This is a Python CLI application that fetches historical stock data, produces 12-month Holt-Winters forecasts, integrates sentiment analysis from news headlines, and generates visualization plots and data files.
+This project forecasts 12 months of monthly stock prices **with prediction intervals**,
+benchmarks the forecast against naive baselines via a walk-forward backtest, and applies a
+**bounded, confidence-shrunk** news-sentiment tilt. It is a small, tested Python package
+(`stockpredictor/`) with a CLI shim, a Streamlit dashboard, and optional SQLite caching.
 
-## Working Effectively
+> The headline rule: never reintroduce the old `forecast * (1 + sentiment)` multiplier, and
+> never present a point forecast without its uncertainty band. Credibility is the point.
 
-### Environment Setup
-- Ensure Python 3.8+ is available: `python3 --version`
-- Use pip3 for package management: `which pip3`
-- **Primary method**: Install all dependencies in one command (NEVER CANCEL - takes 2-3 minutes): 
+## Environment
+
+- Python **3.9+**.
+- Install for development (add `app` for the dashboard; `finbert` for finance-tuned sentiment):
   ```bash
-  pip3 install yfinance pandas statsmodels matplotlib newsapi-python vaderSentiment
+  pip install -e ".[dev,viz,ml,app]"
   ```
-  - **TIMEOUT: Set to 300+ seconds for dependency installation**
-  - Dependencies include data science packages with native extensions that require compilation time
-- **Alternative method** (if pip fails due to network restrictions):
-  ```bash
-  # In environments where pip access to PyPI is restricted
-  # Dependencies may need to be pre-installed or available via system packages
-  # Contact system administrator for package availability
-  ```
+  (core deps live in `pyproject.toml`; `requirements.txt` is kept for the no-install path.)
+- `NEWSAPI_KEY` is **optional**. Without it, forecasts still run and sentiment degrades to
+  "no news" (the tilt becomes a no-op). Set it via `.env` (see `.env.example`) or the env.
 
-### Required Environment Variables
-- **CRITICAL**: Set NEWSAPI_KEY environment variable before running:
-  ```bash
-  export NEWSAPI_KEY="your_api_key_here"
-  ```
-- Get API key from: https://newsapi.org
-- Script will exit with error if NEWSAPI_KEY is not set
+## Running
 
-### Running the Application
-- Basic usage: `python3 stock_forecast_with_sentiment.py --help`
-- Full example command:
-  ```bash
-  python3 stock_forecast_with_sentiment.py \
-    --tickers AAPL,NVDA,MSFT \
-    --start 2023-01-01 \
-    --end 2025-08-29 \
-    --outdir ./stock_plots \
-    --pagesize 5
-  ```
-- **EXECUTION TIME**: Processing takes 1-3 minutes per ticker depending on network speed
-- Creates output directory automatically if it doesn't exist
-
-## Recent Code Improvements
-
-### Enhanced Error Handling & Retry Logic
-- **Automatic Retry**: Implemented exponential backoff retry mechanism for API failures
-- **Smart Date Filtering**: Automatically adjusts date ranges based on NewsAPI plan limits
-- **Error Response Handling**: Proper handling of NewsAPI error responses with status codes
-- **Network Resilience**: Built-in timeout handling and connection retry logic
-
-### API Parameter Fixes
-- **Corrected Parameters**: Fixed NewsAPI client parameter names (`from_param`, `to`)
-- **Deprecation Fixes**: Updated pandas resampling from deprecated `'M'` to `'ME'`
-- **Parameter Validation**: Better validation of API parameters and error messages
-
-### New Features
-- **Date Update Utility**: `update_readme_date.py` script for automatic README date updates
-- **Dynamic Date Examples**: README examples use current last Friday date
-- **Better Logging**: Improved error messages, status reporting, and progress indicators
-- **Comprehensive Documentation**: Enhanced README with troubleshooting and usage examples
-
-## Validation and Testing
-
-### Manual Validation Steps
-**ALWAYS run these validation steps after making changes:**
-
-1. **Basic functionality test**:
-   ```bash
-   python3 stock_forecast_with_sentiment.py --help
-   ```
-   Should display usage information without errors.
-
-2. **Dependency validation**:
-   ```bash
-   python3 -c "import yfinance, pandas, statsmodels, matplotlib, newsapi, vaderSentiment; print('All dependencies available')"
-   ```
-   Expected output: "All dependencies available"
-
-3. **Dependency status check** (if import fails):
-   ```bash
-   pip3 list | grep -E "(yfinance|pandas|statsmodels|matplotlib|newsapi|vader)"
-   ```
-   Should show installed versions of required packages.
-
-4. **Environment variable test**:
-   ```bash
-   python3 stock_forecast_with_sentiment.py --tickers AAPL --start 2024-01-01 --end 2024-02-01
-   ```
-   Should fail with "Error: Set the NEWSAPI_KEY environment variable." if key not set.
-
-5. **Full functionality test** (requires valid API key and network access):
-   ```bash
-   export NEWSAPI_KEY="your_key"
-   python3 stock_forecast_with_sentiment.py --tickers AAPL --start 2024-01-01 --end 2024-02-01 --outdir ./test_output
-   ```
-   Should create plots and JSON files in test_output directory.
-
-6. **Date update utility test**:
-   ```bash
-   python3 update_readme_date.py
-   ```
-   Should update README.md with current last Friday date.
-
-### Expected Outputs
-- PNG plot files: `{TICKER}_forecasts.png`
-- JSON news files: `{TICKER}_news.json`
-- Console output showing processing progress, retry attempts, and sentiment scores
-- Files saved in specified output directory (default: `stock_plots`)
-
-### Validation Scenarios
-**Test these scenarios to ensure full functionality:**
-1. **Single ticker**: Test with one stock symbol
-2. **Multiple tickers**: Test with comma-separated list
-3. **Different date ranges**: Test various start/end date combinations
-4. **Output directory**: Verify files are created in correct location
-5. **Error handling**: Test invalid tickers, date formats, missing API key
-6. **Retry logic**: Test network failures and API rate limiting scenarios
-7. **Date filtering**: Test NewsAPI plan limit handling
-
-## Code Structure
-
-### Main Script: `stock_forecast_with_sentiment.py`
-- **fetch_and_forecast()**: Downloads stock data using yfinance, applies Holt-Winters forecasting
-- **fetch_ticker_news_with_retry()**: Enhanced news retrieval with retry logic and error handling
-- **fetch_ticker_news()**: Wrapper function for backward compatibility
-- **adjust_forecast()**: Modifies forecast based on sentiment analysis
-- **plot_and_save()**: Creates visualization plots and saves to PNG files
-- **main()**: Command-line interface and orchestration
-
-### Utility Scripts
-- **update_readme_date.py**: Automatically updates README with current last Friday date
-- **README.md**: Comprehensive documentation with troubleshooting and examples
-
-### Key Dependencies and Their Purposes
-- `yfinance`: Yahoo Finance data fetching
-- `pandas`: Data manipulation and time series handling (updated to use 'ME' for monthly resampling)
-- `statsmodels`: Holt-Winters exponential smoothing models
-- `matplotlib`: Plot generation and visualization
-- `newsapi-python`: News headline retrieval with proper parameter handling
-- `vaderSentiment`: Sentiment analysis of news text
-
-## Common Issues and Troubleshooting
-
-### Network and API Issues
-- **Yahoo Finance access**: Requires internet connectivity to fetch stock data
-- **NewsAPI rate limits**: Free tier has request limitations (handled by retry logic)
-- **DNS resolution**: Yahoo Finance uses external domains that may be blocked
-- **Connection timeouts**: Built-in retry mechanism handles temporary network issues
-
-### Environment Issues
-- **Python version**: Requires Python 3.8+ for compatibility with all dependencies
-- **Missing dependencies**: Run dependency installation command if import errors occur
-- **PyPI connectivity**: pip install may fail in restricted network environments (use pre-installed packages when available)
-- **API key format**: Ensure NEWSAPI_KEY is set as environment variable, not hardcoded
-
-### API Parameter Issues
-- **Date filtering**: NewsAPI uses `from_param` and `to` parameters (not `from` and `to`)
-- **Plan limitations**: Free tier may reject date ranges; script automatically retries without dates
-- **Parameter validation**: Script validates all API parameters before making requests
-
-### Sandbox Environment Limitations
-- **No external network**: Cannot fetch real stock or news data in isolated environments
-- **PyPI access restrictions**: pip install may fail with timeout errors in restricted environments
-- **Limited validation**: Full testing requires network access and valid API credentials
-- **Error simulation**: Use invalid API keys to test error handling paths
-- **Dependency persistence**: Once installed, dependencies should persist between sessions
-
-## File Organization
-
-### Repository Root
-```
-.
-├── README.md                           # Comprehensive usage instructions and troubleshooting
-├── LICENSE                            # GPL-3.0 license
-├── stock_forecast_with_sentiment.py   # Main application script with enhanced error handling
-├── update_readme_date.py              # Utility script for automatic date updates
-├── requirements.txt                   # Python dependencies
-└── .github/
-    └── copilot-instructions.md        # This file
+```bash
+# CLI (shim keeps the original invocation working)
+python3 stock_forecast_with_sentiment.py --tickers AAPL,NVDA --start 2015-01-01 --end 2024-12-31 --compare-models
+# or, after `pip install -e .`
+stock-forecast --tickers AAPL --start 2015-01-01 --end 2024-12-31
+# dashboard
+streamlit run app.py
 ```
 
-### Generated Output Structure
+Flags: `--no-sentiment`, `--sentiment-model {vader,finbert}`, `--no-backtest`,
+`--compare-models`, `--no-cache`, `--db PATH`, `--log-level`.
+
+## Validation (do this after every change)
+
+```bash
+pytest -q --cov=stockpredictor   # the suite mocks yfinance/NewsAPI — NO network needed
+ruff check . && ruff format --check .
+mypy stockpredictor
 ```
-stock_plots/                   # Default output directory
-├── YYYY-MM-DD/               # Date-specific subdirectories
-│   ├── AAPL_forecasts.png    # Stock forecast visualization
-│   ├── AAPL_news.json       # News sentiment analysis data
-│   ├── MSFT_forecasts.png   # Additional ticker results
-│   └── MSFT_news.json       # Additional ticker results
-```
 
-## Development Guidelines
+All three must be green; CI (`.github/workflows/ci.yml`) runs them on 3.9/3.11/3.12 plus
+`pip-audit`. Tests inject fake clients (`tests/conftest.py`), so add tests for new logic
+the same way rather than hitting the network.
 
-### Making Changes
-- **No build process**: This is a script-based project, no compilation required
-- **Enhanced testing**: Use the expanded validation scenarios above
-- **Code style**: Follow existing Python conventions in the script
-- **Dependencies**: Avoid adding new dependencies unless absolutely necessary
-- **Error handling**: Maintain the robust error handling and retry logic
+## Architecture (where things live)
 
-### Before Committing Changes
-1. Run all validation steps listed above
-2. Test with multiple tickers if modifying core logic
-3. Verify error handling with invalid inputs and network failures
-4. Check that output files are generated correctly
-5. Test the retry logic with simulated failures
-6. Verify date update utility works correctly
+| Module | Responsibility |
+| --- | --- |
+| `config.py` | constants (no magic numbers), `AppConfig`, `setup_logging` |
+| `data.py` | price fetch (injectable `downloader`), adjusted close, validation, monthly resample |
+| `forecast.py` | Holt-Winters + simulated intervals, baselines, backtest, metrics (`InsufficientDataError`) |
+| `sentiment.py` | `Scorer` (VADER/FinBERT), `aggregate_sentiment` → `SentimentResult`, `apply_sentiment_tilt` |
+| `news.py` | NewsAPI fetch with retry/date-fallback, window anchored to `--end` |
+| `plotting.py` | matplotlib PNG (shaded intervals) + `build_plotly_figure` / HTML |
+| `pipeline.py` | `run_ticker()` — shared core for CLI + dashboard; `persist_outputs`, `metrics_payload` |
+| `models.py` | SARIMAX / gradient-boosting + `select_best_model` (Phase-5, optional) |
+| `store.py` | optional SQLite price cache + run history |
+| `cli.py` | argparse entry point |
+| `app.py` (root) | Streamlit dashboard |
+| `stock_forecast_with_sentiment.py` (root) | backward-compatible shim → `stockpredictor.cli:main` |
 
-### Performance Considerations
-- Processing time scales linearly with number of tickers
-- Network latency affects Yahoo Finance data fetching (mitigated by retry logic)
-- NewsAPI requests are rate-limited on free tier (handled by smart retry)
-- Matplotlib plot generation is CPU-intensive for large datasets
-- Retry logic adds minimal overhead but improves reliability
+## Conventions
 
-## CRITICAL WARNINGS
+- **Inject I/O.** Network clients (yfinance downloader, NewsAPI client, scorer) are passed in
+  so logic stays unit-testable. Don't hardwire `yf.download` / `NewsApiClient` into logic.
+- **Keep VADER the zero-dependency default.** FinBERT (`transformers`/`torch`) and sklearn
+  (GBM) are optional extras, lazy-imported, and must degrade gracefully when absent.
+- **Use `logging`, not `print`.** Never log the API key.
+- **Modernized typing** (`from __future__ import annotations`, PEP 585/604) — ruff enforces it.
+- Outputs per ticker land in `stock_plots/YYYY-MM-DD/`: `*_forecasts.png`, `*_forecast.html`,
+  `*_news.json`, `*_metrics.json`.
 
-- **NEVER CANCEL** dependency installation - compilation of native extensions takes time
-- **ALWAYS** test with valid NEWSAPI_KEY when modifying news/sentiment functionality  
-- **NETWORK REQUIRED** for full functionality testing - script cannot work offline
-- **API LIMITS** apply to NewsAPI free tier - retry logic handles rate limiting gracefully
-- **MAINTAIN ERROR HANDLING** - the enhanced retry and error handling is critical for production use
-- **TEST RETRY LOGIC** - ensure network failure scenarios are properly handled
+## Common pitfalls
+
+- NewsAPI free tier serves ~30 days; an older `--end` triggers a loud warning and a no-date
+  fallback. That's expected — don't "fix" it by reverting to "last 30 days from now".
+- Seasonal Holt-Winters needs ≥24 monthly points; below that the code falls back to
+  non-seasonal, and below 6 points raises `InsufficientDataError`.
+- `update_readme_date.py` is hardened (script-relative path, error handling, no silent no-op);
+  keep it that way.
