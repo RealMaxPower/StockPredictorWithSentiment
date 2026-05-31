@@ -31,6 +31,7 @@ from .signals import Signal, SignalFn
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .portfolio import WeightFn
+    from .sentiment import SentimentResult
 
 logger = logging.getLogger("stockpredictor.strategy")
 
@@ -79,6 +80,25 @@ def make_weight_fn(
         return float(min(max(fraction, 0.0), cfg.max_weight))
 
     return _fn
+
+
+def build_weight_fn(
+    cfg: config.AppConfig,
+    *,
+    sentiment: SentimentResult | None = None,
+    signal_fn: SignalFn | None = None,
+) -> WeightFn:
+    """Assemble the production ``WeightFn``: forecast signal → gate → cfg-selected sizing.
+
+    The sizing method (``vol`` | ``kelly``) is chosen inside ``sizing.size_position``
+    from ``cfg.sizing_method`` each call, so it stays a logged, swappable variant.
+    ``signal_fn`` is overridable for tests; by default it is the point-in-time
+    forecast signal from ``signals.make_signal_fn``.
+    """
+    from . import signals, sizing
+
+    signal_fn = signal_fn or signals.make_signal_fn(cfg, sentiment=sentiment)
+    return make_weight_fn(signal_fn, sizing_fn=sizing.size_position)
 
 
 def variant_id(cfg: config.AppConfig) -> str:
