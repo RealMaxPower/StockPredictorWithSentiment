@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from stockpredictor import pipeline
-from stockpredictor.sanitize import escape_markdown, safe_url, sanitize_ticker
+from stockpredictor.sanitize import escape_markdown, safe_url, sanitize_ticker, scrub
 
 
 class TestSanitizeTicker:
@@ -49,6 +49,28 @@ class TestSanitizeTicker:
         # The pipeline core must reject before the symbol becomes a file name.
         with pytest.raises(ValueError):
             pipeline.run_ticker("../../tmp/evil", cfg)
+
+
+class TestScrub:
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "AAPL\nADMIN: forged entry",  # newline forging a second log line
+            "AAPL\r\nADMIN",  # CRLF
+            "AAPL\x1b[31mred",  # terminal escape sequence
+            "AAPL\x00\x07",  # NUL and BEL
+        ],
+    )
+    def test_removes_control_chars(self, raw):
+        out = scrub(raw)
+        assert "\n" not in out and "\r" not in out
+        assert not any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in out)
+
+    def test_passes_through_plain_text(self):
+        assert scrub("AAPL: fetched 5 articles") == "AAPL: fetched 5 articles"
+
+    def test_coerces_non_str(self):
+        assert scrub(42) == "42"
 
 
 def test_escape_markdown_neutralizes_link_breakout():

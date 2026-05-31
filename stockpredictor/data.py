@@ -14,6 +14,8 @@ from typing import Callable
 
 import pandas as pd
 
+from .sanitize import scrub
+
 logger = logging.getLogger("stockpredictor.data")
 
 # Default downloader is yfinance; injected in tests.
@@ -97,6 +99,7 @@ def to_monthly(df: pd.DataFrame, ticker: str, agg: str = "last") -> tuple[pd.Ser
             f"{len(suspect)} day(s) move > {_SUSPECT_MONTHLY_MOVE:.0%} — "
             "possible unadjusted split/dividend"
         )
+    log_ticker = scrub(ticker)
     for w in warns:
-        logger.warning("%s: %s", ticker, w)
+        logger.warning("%s: %s", log_ticker, w)
     return monthly, warns

@@ -32,6 +32,24 @@ _MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+!~|<>])")
 # close the "(...)" or otherwise change where the link points.
 _URL_FORBIDDEN = set("<> \t\r\n\"'()")
 
+# ASCII control characters (C0 range plus DEL): a CR/LF lets untrusted input
+# forge or split extra log lines, and other control codes can smuggle terminal
+# escape sequences into a log viewer ("log injection", CWE-117).
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def scrub(value: object) -> str:
+    """
+    Flatten ``value`` into a single line that is safe to write to a log.
+
+    Strips CR/LF and other control characters so an attacker-controlled string
+    (e.g. a ticker from the CLI or dashboard) cannot inject newlines and forge
+    additional log entries. The explicit ``\\r``/``\\n`` replacements keep the
+    sanitization recognizable to static analysis.
+    """
+    cleaned = _CONTROL_CHARS.sub(" ", str(value))
+    return cleaned.replace("\r", " ").replace("\n", " ")
+
 
 def sanitize_ticker(raw: str) -> str:
     """Normalize and validate a ticker symbol; raise ``ValueError`` if invalid."""
