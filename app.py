@@ -10,14 +10,15 @@ mode); set the key in the environment or in .streamlit/secrets.toml for news.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import os
 
 import pandas as pd
 import streamlit as st
 
-from stockpredictor import config, news, plotting
-from stockpredictor.pipeline import run_ticker
+from stockpredictor import config, evaluation, news, plotting
+from stockpredictor.pipeline import run_simulation, run_ticker
 from stockpredictor.sanitize import escape_markdown, safe_url, sanitize_ticker
 
 PRESETS = {
@@ -73,7 +74,62 @@ def _run(ticker: str, start: str, end: str, page_size: int, sentiment_enabled: b
     return result, cfg
 
 
-def _render_result(ticker: str, result, cfg) -> None:
+def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
+    """Render the paper-trading simulation: equity overlay, scorecard, overfit warning."""
+    sim_cfg = dataclasses.replace(cfg, sizing_method=sizing)
+    try:
+        report = run_simulation(ticker, sim_cfg, monthly=result.monthly)
+    except Exception as exc:  # noqa: BLE001 - surface, don't crash the dashboard
+        st.warning(f"Simulation unavailable for {ticker}: {exc}")
+        return
+
+    st.subheader("Paper-trading simulation (after costs, out-of-sample)")
+    if report.scorecard.n_periods < config.MIN_RELIABLE_PERIODS:
+        st.warning(
+            f"⚠ Small sample: only {report.scorecard.n_periods} rebalances. Annualized "
+            f"CAGR/Sharpe are extrapolated from too few points to trust — widen the date "
+            f"range (≥ ~{config.MIN_RELIABLE_PERIODS} months, ideally several years)."
+        )
+    try:
+        st.plotly_chart(
+            plotting.build_equity_figure(report.result, ticker), use_container_width=True
+        )
+    except ImportError:
+        st.info("Install plotly for the equity overlay (`pip install plotly`).")
+
+    card = report.scorecard
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "Beat buy & hold?",
+        "YES" if card.beat_buy_and_hold else "NO",
+        f"{card.excess_cagr_vs_bh * 100:+.1f}% CAGR",
+    )
+    c2.metric(
+        "Beat risk-free?",
+        "YES" if card.beat_risk_free else "NO",
+        f"{card.excess_cagr_vs_rf * 100:+.1f}% CAGR",
+    )
+    c3.metric(
+        "Max drawdown", f"{card.max_drawdown * 100:.1f}%", f"turnover {card.turnover_annual:.1f}x"
+    )
+    st.code(
+        evaluation.format_scorecard(
+            card, ticker=ticker, variants_tried=report.variants_tried, holdout=report.holdout
+        ),
+        language="text",
+    )
+    st.warning(
+        "⚠ Multiple-testing caution: trying many tickers, date ranges, or sizing "
+        "methods and keeping the best is **overfitting**. Treat a single green "
+        "scorecard with deep skepticism; the held-out line is the once-touched check. "
+        "For monthly single-name timing, **no durable edge after costs is the "
+        "expected, honest result.**"
+    )
+
+
+def _render_result(
+    ticker: str, result, cfg, *, simulate: bool = False, sizing: str = "vol"
+) -> None:
     """Render one ticker's chart, metrics, backtest, and headlines."""
     col_chart, col_meta = st.columns([3, 1])
     with col_chart:
@@ -128,6 +184,9 @@ def _render_result(ticker: str, result, cfg) -> None:
             label = f"[{title}]({url})" if url else title
             st.markdown(f"{emoji} **{label}** — *{source}* ({score:+.2f})")
 
+    if simulate:
+        _render_simulation(ticker, result, cfg, sizing)
+
 
 def _comparison_table(results: dict) -> pd.DataFrame:
     """One row per ticker: projected change, sentiment, and backtest MASE."""
@@ -167,11 +226,21 @@ def main() -> None:
         default_tickers = PRESETS[preset] if preset in PRESETS else "AAPL"
         tickers_raw = st.text_input("Tickers (comma-separated)", value=default_tickers)
         today = dt.date.today()
-        # Default to the last 12 months (a longer range unlocks the seasonal model).
-        start = st.date_input("Start", value=today - dt.timedelta(days=365)).isoformat()
+        # Default to ~10 years: long enough for the seasonal model AND for the
+        # paper-trading simulation's annualized metrics to be meaningful (a short
+        # window yields only a handful of rebalances and noisy CAGR/Sharpe).
+        start = st.date_input("Start", value=today - dt.timedelta(days=365 * 10)).isoformat()
         end = st.date_input("End", value=today).isoformat()
         page_size = st.slider("Headlines", 1, 20, config.PAGE_SIZE)
         sentiment_enabled = st.checkbox("Apply sentiment tilt", value=True)
+        st.divider()
+        simulate = st.checkbox(
+            "Paper-trading simulation (after costs)",
+            value=False,
+            help="Cost-aware, out-of-sample backtest vs buy-and-hold and the risk-free rate. "
+            "Educational demo — not financial advice.",
+        )
+        sizing = st.selectbox("Position sizing", ["vol", "kelly"], disabled=not simulate)
         go = st.button("Run forecast", type="primary")
 
     if not go:
@@ -208,7 +277,7 @@ def main() -> None:
 
     if len(results) == 1:
         tk, (res, cfg) = next(iter(results.items()))
-        _render_result(tk, res, cfg)
+        _render_result(tk, res, cfg, simulate=simulate, sizing=sizing)
         return
 
     st.subheader("Comparison")
@@ -217,7 +286,7 @@ def main() -> None:
     for tab, tk in zip(st.tabs(labels), results):
         with tab:
             res, cfg = results[tk]
-            _render_result(tk, res, cfg)
+            _render_result(tk, res, cfg, simulate=simulate, sizing=sizing)
 
 
 if __name__ == "__main__":
