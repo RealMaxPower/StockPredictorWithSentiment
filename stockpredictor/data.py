@@ -72,13 +72,22 @@ def validate_close(close: pd.Series) -> tuple[pd.Series, list[str]]:
     return clean, warnings_out
 
 
-def to_monthly(df: pd.DataFrame, ticker: str) -> tuple[pd.Series, list[str]]:
+def to_monthly(df: pd.DataFrame, ticker: str, agg: str = "last") -> tuple[pd.Series, list[str]]:
     """
-    Validated monthly-average series from a daily OHLCV frame, plus any data-quality
+    Validated monthly series from a daily OHLCV frame, plus any data-quality
     warnings (suspected splits, dropped rows, sparse months).
+
+    ``agg`` controls month-end aggregation. The default ``"last"`` keeps the
+    month-end close — the value a point-in-time forecast can actually be compared
+    against. ``"mean"`` averages within the month, which low-pass-filters the
+    series and flatters every skill metric (especially directional accuracy); it
+    is offered only for diagnostics.
     """
+    if agg not in ("last", "mean"):
+        raise ValueError(f"monthly agg must be 'last' or 'mean', got {agg!r}")
     close, warns = validate_close(_extract_close(df, ticker))
-    monthly = close.resample("ME").mean().dropna()
+    resampled = close.resample("ME")
+    monthly = (resampled.last() if agg == "last" else resampled.mean()).dropna()
 
     # Flag suspected unadjusted splits/dividends on the daily series.
     daily_ret = close.pct_change().abs()

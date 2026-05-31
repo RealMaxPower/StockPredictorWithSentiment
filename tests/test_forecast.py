@@ -69,3 +69,36 @@ def test_backtest_runs_all_models(monthly, cfg):
     for metrics in bt.values():
         assert metrics["folds"] >= 1
         assert "mase" in metrics and "directional" in metrics
+
+
+def test_log_space_keeps_bands_positive_for_cheap_volatile_series(cfg):
+    # A sub-$5, highly volatile name where additive-on-level bands could go negative.
+    idx = pd.date_range("2014-01-31", periods=48, freq="ME")
+    rng = np.random.default_rng(7)
+    prices = 3.0 * np.exp(np.cumsum(rng.normal(0, 0.25, 48)))
+    series = pd.Series(prices, index=idx)
+    res = fc.forecast_with_intervals(series, cfg)
+    assert (res.point > 0).all()
+    lo80, hi80 = res.intervals[80]
+    lo95, hi95 = res.intervals[95]
+    assert (lo95 > 0).all()  # log space -> strictly positive lower bound
+    assert (lo95.values <= lo80.values).all() and (hi80.values <= hi95.values).all()
+    assert (res.point.values >= lo80.values).all() and (res.point.values <= hi80.values).all()
+
+
+def test_backtest_reports_interval_coverage(monthly, cfg):
+    summary = fc.backtest(monthly, cfg)
+    hw = summary["holt_winters"]
+    assert "coverage80" in hw and "coverage95" in hw
+    for key in ("coverage80", "coverage95"):
+        v = hw[key]
+        assert v != v or 0.0 <= v <= 1.0  # NaN allowed; otherwise a valid fraction
+
+
+def test_interval_coverage_fraction():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    lo = np.zeros(4)
+    assert fc.interval_coverage(y, lo, np.full(4, 5.0)) == 1.0
+    assert fc.interval_coverage(y, lo, np.full(4, 0.5)) == 0.0
+    # Covers points 1, 3, 4 but not 2 -> 0.75.
+    assert fc.interval_coverage(y, lo, np.array([1.5, 1.5, 5.0, 5.0])) == 0.75

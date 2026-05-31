@@ -49,7 +49,7 @@ def run_ticker(
     # Validate before the symbol becomes a file name in persist_outputs/plotting.
     ticker = sanitize_ticker(ticker)
     df = data.fetch_prices(ticker, cfg.start, cfg.end, downloader=price_downloader)
-    monthly, warns = data.to_monthly(df, ticker)
+    monthly, warns = data.to_monthly(df, ticker, agg=cfg.monthly_agg)
 
     fcast = forecast.forecast_with_intervals(monthly, cfg)
     bt = {}

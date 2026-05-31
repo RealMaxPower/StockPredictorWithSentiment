@@ -48,47 +48,69 @@ def _future_index(index: pd.Index, horizon: int) -> pd.DatetimeIndex:
 
 
 def _fit_holt_winters(monthly: pd.Series, cfg: config.AppConfig):
-    """Fit Holt-Winters, using seasonality only when there is enough history."""
+    """
+    Fit Holt-Winters, using seasonality only when there is enough history.
+
+    Fitting is done in *log* space (``log(price)``) whenever every value is
+    positive. Additive trend/seasonal on logs is multiplicative in price, so both
+    components scale with the price level — the right assumption for a series that
+    can run $20 -> $200 — and exponentiating the forecast/simulated paths keeps the
+    point and all interval bounds strictly positive. Falls back to level space if
+    any value is non-positive (which should not happen after ``validate_close``).
+    Returns ``(fit, seasonal_used, log_space)``.
+    """
+    log_space = bool((monthly > 0).all())
+    work = np.log(monthly) if log_space else monthly
     seasonal = len(monthly) >= cfg.min_months_seasonal
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = ExponentialSmoothing(
-            monthly,
+            work,
             trend="add",
             seasonal="add" if seasonal else None,
             seasonal_periods=cfg.seasonal_periods if seasonal else None,
             initialization_method="estimated",
         )
         fit = model.fit(optimized=True)
-    return fit, seasonal
+    return fit, seasonal, log_space
 
 
-def forecast_with_intervals(monthly: pd.Series, cfg: config.AppConfig) -> ForecastResult:
+def forecast_with_intervals(
+    monthly: pd.Series, cfg: config.AppConfig, horizon: int | None = None
+) -> ForecastResult:
     """
     Point forecast plus prediction intervals via Monte-Carlo simulation of the
     fitted model (robust across statsmodels versions and the seasonal/non-seasonal
     split). Intervals widen with the horizon, communicating real uncertainty.
+
+    ``horizon`` defaults to ``cfg.horizon``; the backtest passes a shorter horizon
+    so it can measure empirical out-of-sample coverage of these same bands.
     """
     if len(monthly) < config.MIN_MONTHS_FOR_ANY_FIT:
         raise InsufficientDataError(
             f"need >= {config.MIN_MONTHS_FOR_ANY_FIT} monthly points, got {len(monthly)}"
         )
 
-    fit, seasonal = _fit_holt_winters(monthly, cfg)
-    point = fit.forecast(cfg.horizon)
-    point.index = _future_index(monthly.index, cfg.horizon)
+    h = cfg.horizon if horizon is None else horizon
+    fit, seasonal, log_space = _fit_holt_winters(monthly, cfg)
+    point = fit.forecast(h)
+    if log_space:
+        point = np.exp(point)
+    point.index = _future_index(monthly.index, h)
 
     intervals: dict[int, tuple[pd.Series, pd.Series]] = {}
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             sims = fit.simulate(
-                nsimulations=cfg.horizon,
+                nsimulations=h,
                 repetitions=_SIM_REPS,
                 anchor="end",
                 random_state=_SIM_SEED,
             )
         sims = np.asarray(sims)  # shape (horizon, repetitions)
+        if log_space:
+            sims = np.exp(sims)  # back to price space -> bounds stay positive
         for alpha in config.INTERVAL_ALPHAS:
             coverage = int(round((1 - alpha) * 100))
             lower = np.quantile(sims, alpha / 2, axis=1)
@@ -132,8 +154,10 @@ def holt_winters_model_fn(cfg: config.AppConfig) -> ModelFn:
     """Adapt the Holt-Winters fit into a (train, horizon) -> point-series fn."""
 
     def _fn(train: pd.Series, horizon: int) -> pd.Series:
-        fit, _ = _fit_holt_winters(train, cfg)
+        fit, _, log_space = _fit_holt_winters(train, cfg)
         out = fit.forecast(horizon)
+        if log_space:
+            out = np.exp(out)
         out.index = _future_index(train.index, horizon)
         return out
 
@@ -187,6 +211,18 @@ def directional_accuracy(y_true: np.ndarray, y_pred: np.ndarray, anchor: float) 
     return float(hits / len(y_true)) if len(y_true) else float("nan")
 
 
+def interval_coverage(y_true: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> float:
+    """Empirical coverage: the fraction of actuals that fall within [lower, upper].
+
+    A well-calibrated 95% band should cover ~95% of held-out points; reporting the
+    realized rate is the honest check on the project's headline uncertainty bands.
+    """
+    if len(y_true) == 0:
+        return float("nan")
+    inside = (y_true >= lower) & (y_true <= upper)
+    return float(np.mean(inside))
+
+
 def backtest(
     monthly: pd.Series,
     cfg: config.AppConfig,
@@ -204,6 +240,8 @@ def backtest(
     per_model: dict[str, dict[str, list[float]]] = {
         name: {"mae": [], "rmse": [], "mape": [], "mase": [], "directional": []} for name in models
     }
+    # Empirical out-of-sample coverage of the Holt-Winters prediction intervals.
+    coverage: dict[int, list[float]] = {80: [], 95: []}
     folds_run = 0
     for k in range(cfg.backtest_folds):
         test_end = n - k * h
@@ -230,6 +268,16 @@ def backtest(
             per_model[name]["mase"].append(mase(y_true, pred, train_arr, m))
             per_model[name]["directional"].append(directional_accuracy(y_true, pred, anchor))
 
+        # Score the interval bands the live forecast would have drawn on this fold.
+        try:
+            fc = forecast_with_intervals(train, cfg, horizon=len(test))
+            for cov, band in fc.intervals.items():
+                if cov in coverage:
+                    lo, hi = band[0].to_numpy(), band[1].to_numpy()
+                    coverage[cov].append(interval_coverage(y_true, lo, hi))
+        except Exception as exc:  # noqa: BLE001 - coverage is best-effort
+            logger.debug("Interval coverage failed on fold %d: %s", k, exc)
+
     summary: dict[str, dict[str, float]] = {}
     for name, metrics in per_model.items():
         summary[name] = {
@@ -237,4 +285,12 @@ def backtest(
             for metric, vals in metrics.items()
         }
         summary[name]["folds"] = float(folds_run)
+    # Coverage is a property of the interval-producing model (Holt-Winters).
+    if "holt_winters" in summary:
+        summary["holt_winters"]["coverage80"] = (
+            float(np.nanmean(coverage[80])) if coverage[80] else float("nan")
+        )
+        summary["holt_winters"]["coverage95"] = (
+            float(np.nanmean(coverage[95])) if coverage[95] else float("nan")
+        )
     return summary

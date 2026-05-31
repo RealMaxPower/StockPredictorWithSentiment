@@ -69,7 +69,8 @@ def _make_news_client(logger) -> object | None:
 
 def _summarize(result: pipeline.TickerResult, logger) -> None:
     change = (result.forecast.point.iloc[-1] / result.monthly.iloc[-1] - 1) * 100
-    hw_mase = result.backtest.get("holt_winters", {}).get("mase", float("nan"))
+    hw = result.backtest.get("holt_winters", {})
+    hw_mase = hw.get("mase", float("nan"))
     sn_mase = result.backtest.get("seasonal_naive", {}).get("mase", float("nan"))
     verdict = ""
     # NaN != NaN, so this is False whenever a backtest value is missing/NaN.
@@ -86,6 +87,30 @@ def _summarize(result: pipeline.TickerResult, logger) -> None:
         hw_mase,
         verdict,
     )
+
+    # Out-of-sample interval coverage: does the 80/95% band actually cover that often?
+    cov80, cov95 = hw.get("coverage80", float("nan")), hw.get("coverage95", float("nan"))
+    if cov80 == cov80 or cov95 == cov95:
+        logger.info(
+            "%s: backtest interval coverage — 80%%=%.0f%% (target 80), 95%%=%.0f%% (target 95)",
+            result.ticker,
+            cov80 * 100,
+            cov95 * 100,
+        )
+
+    # The live forecast's month-by-horizon band (the headline uncertainty).
+    band = result.forecast.intervals.get(95)
+    if band is not None:
+        lo, hi = band
+        last = result.forecast.point.index[-1].strftime("%Y-%m")
+        logger.info(
+            "%s: %s point %.2f, 95%% band [%.2f, %.2f]",
+            result.ticker,
+            last,
+            result.forecast.point.iloc[-1],
+            lo.iloc[-1],
+            hi.iloc[-1],
+        )
 
 
 def main(argv: list | None = None) -> int:

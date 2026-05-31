@@ -17,6 +17,10 @@ MIN_MONTHS_FOR_SEASONAL = 2 * SEASONAL_PERIODS  # 24
 MIN_MONTHS_FOR_ANY_FIT = 6
 # Two-sided prediction-interval coverages to draw (95% and 80%).
 INTERVAL_ALPHAS = (0.05, 0.20)
+# Monthly resampling: "last" keeps the month-end close (the value a point-in-time
+# forecast can actually be compared against); "mean" averages within the month,
+# which smooths the series and flatters every skill metric (diagnostics only).
+MONTHLY_AGG = "last"
 
 # --- Backtest defaults -------------------------------------------------------
 BACKTEST_FOLDS = 4
@@ -57,6 +61,7 @@ class AppConfig:
     horizon: int = HORIZON_MONTHS
     seasonal_periods: int = SEASONAL_PERIODS
     min_months_seasonal: int = MIN_MONTHS_FOR_SEASONAL
+    monthly_agg: str = MONTHLY_AGG  # "last" (month-end close) | "mean" (within-month average)
 
     page_size: int = PAGE_SIZE
     news_lookback_days: int = NEWS_LOOKBACK_DAYS

@@ -115,44 +115,59 @@ def build_plotly_figure(
     """Build a Plotly figure with the shaded 95% band (shared by HTML export + app)."""
     import plotly.graph_objects as go
 
+    # Pin colors so the legend is deterministic and matches the matplotlib PNG.
+    # (Plotly's auto color-cycle would otherwise be consumed by the invisible band
+    # boundary traces, leaving the visible lines with arbitrary leftover colors.)
+    hist_color, fcast_color, adj_color = "#1f77b4", "#ff7f0e", "#2ca02c"
+
     fig = go.Figure()
-    fig.add_scatter(x=monthly.index, y=monthly.values, name="Historical")
+    fig.add_scatter(
+        x=monthly.index, y=monthly.values, name="Historical", line=dict(color=hist_color)
+    )
     if 95 in result.intervals:
         lo, hi = result.intervals[95]
+        # mode="lines" is required: Plotly defaults to lines+markers for short
+        # series (the horizon is only 12 points), so width=0 alone would still
+        # draw the band edges as stray marker dots over the shaded fill.
         fig.add_scatter(
-            x=hi.index, y=hi.values, name="95% upper", line=dict(width=0), showlegend=False
+            x=hi.index,
+            y=hi.values,
+            name="95% upper",
+            mode="lines",
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo="skip",
         )
         fig.add_scatter(
             x=lo.index,
             y=lo.values,
             name="95% interval",
+            mode="lines",
             fill="tonexty",
             fillcolor="rgba(255,127,14,0.15)",
             line=dict(width=0),
+            hoverinfo="skip",
         )
-    fig.add_scatter(x=result.point.index, y=result.point.values, name="Forecast")
+    fig.add_scatter(
+        x=result.point.index, y=result.point.values, name="Forecast", line=dict(color=fcast_color)
+    )
     if adjusted is not None:
         fig.add_scatter(
-            x=adjusted.index, y=adjusted.values, name="Sentiment-adjusted", line=dict(dash="dash")
+            x=adjusted.index,
+            y=adjusted.values,
+            name="Sentiment-adjusted",
+            line=dict(color=adj_color, dash="dash"),
         )
     title = f"{ticker}: forecast with uncertainty"
     if sentiment_label:
         title += f" — news: {sentiment_label}"
+    # Disclaimer rides in the title as a subtitle so it never collides with the
+    # x-axis date labels / rangeslider at the bottom of the figure.
+    title += f"<br><sup>{config.DISCLAIMER}</sup>"
     fig.update_layout(
         title=title,
         xaxis_title="Date",
         yaxis_title="Price",
         xaxis_rangeslider_visible=True,
-        annotations=[
-            dict(
-                text=config.DISCLAIMER,
-                xref="paper",
-                yref="paper",
-                x=1,
-                y=-0.18,
-                showarrow=False,
-                font=dict(size=10, color="gray"),
-            )
-        ],
     )
     return fig

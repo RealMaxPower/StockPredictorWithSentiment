@@ -41,3 +41,28 @@ def test_to_monthly_resamples_and_flags_split():
     assert monthly.index.freqstr in ("ME", "M")
     assert any("split" in w for w in warns)
     assert len(monthly) == 24
+
+
+def test_to_monthly_last_uses_month_end_close():
+    days = pd.date_range("2020-01-01", "2020-03-31", freq="D")
+    s = pd.Series(np.arange(1.0, len(days) + 1), index=days)
+    df = pd.DataFrame({"Close": s})
+    monthly, _ = data.to_monthly(df, "TST")  # default agg="last"
+    assert monthly.iloc[0] == s.loc["2020-01-31"]
+    assert monthly.iloc[1] == s.loc["2020-02-29"]
+
+
+def test_to_monthly_mean_smooths_below_last_for_rising_series():
+    days = pd.date_range("2020-01-01", "2020-03-31", freq="D")
+    s = pd.Series(np.arange(1.0, len(days) + 1), index=days)
+    df = pd.DataFrame({"Close": s})
+    last, _ = data.to_monthly(df, "TST", agg="last")
+    mean, _ = data.to_monthly(df, "TST", agg="mean")
+    # A monotonically rising series has month-end close above its within-month mean.
+    assert (last > mean).all()
+
+
+def test_to_monthly_invalid_agg_raises():
+    df = pd.DataFrame({"Close": [1.0, 2.0]}, index=pd.date_range("2020-01-01", periods=2))
+    with pytest.raises(ValueError):
+        data.to_monthly(df, "TST", agg="median")
