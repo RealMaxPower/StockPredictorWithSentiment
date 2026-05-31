@@ -23,10 +23,13 @@ script into a small, tested package:
   and decays over the horizon, shrunk by a confidence score (sample size + agreement).
   "No news" is distinct from "neutral"; `--no-sentiment` disables it entirely.
 - **Prediction intervals** — 80%/95% bands (Monte-Carlo simulation) instead of a
-  single deterministic line that implied false precision.
+  single deterministic line that implied false precision. The fit is done in **log
+  space**, so trend/seasonality scale with the price level and the bands stay positive.
 - **Baselines + walk-forward backtest** — every run is scored against naive,
   seasonal-naive, and drift via rolling-origin cross-validation, reporting
-  MAE/RMSE/MAPE/**MASE**/directional accuracy.
+  MAE/RMSE/MAPE/**MASE**/directional accuracy **and empirical interval coverage**.
+- **Month-end forecasts** — the series is resampled to the month-end close, not the
+  within-month average, so the metrics reflect a target you could actually trade.
 - **Adjusted close + data guards** — splits/dividends no longer read as crashes;
   seasonal fits require ≥24 months (else a non-seasonal fallback).
 - **Time-aligned news** — the news window is anchored to `--end` (not "now"), and
@@ -96,9 +99,13 @@ and the headlines that informed it.
 
 ## How it works
 
-1. **Data** — daily *adjusted* close from yfinance, validated and resampled to monthly.
-2. **Forecast** — Holt-Winters (seasonal when ≥24 months) with simulated 80%/95% intervals.
-3. **Backtest** — rolling-origin folds score the model against naive/seasonal-naive/drift.
+1. **Data** — daily *adjusted* close from yfinance, validated and resampled to the
+   **month-end close** (`monthly_agg="last"`; `"mean"` is available for diagnostics
+   but smooths the series and flatters the metrics).
+2. **Forecast** — Holt-Winters in log space (seasonal when ≥24 months) with simulated
+   80%/95% intervals that stay positive.
+3. **Backtest** — rolling-origin folds score the model against naive/seasonal-naive/
+   drift and report the empirical coverage of the 80%/95% bands.
 4. **News** — NewsAPI articles in the window ending at `--end`, scored with VADER (or FinBERT).
 5. **Sentiment tilt** — a bounded, decaying, confidence-shrunk nudge — not a raw multiplier.
 6. **Output** — PNG + interactive HTML + JSON; optionally cached/recorded in SQLite.
@@ -143,6 +150,13 @@ recent Friday (now hardened against a missing/unwritable README and silent no-op
 - **Short history**: tickers with <24 monthly points fall back to a non-seasonal fit;
   <6 points are skipped with a clear error.
 - **No NewsAPI key**: forecasts still run (sentiment is simply disabled).
+- **"The metrics look modest"**: by design. Forecasting the month-end close (not the
+  within-month *average*) removes a low-pass filter that used to inflate the scores —
+  especially directional accuracy. The honest, harder-to-game numbers are the point.
+- **Sentiment is not in the backtest**: the tilt is applied only to the live forecast.
+  NewsAPI's free tier serves ~30 days, so there is no point-in-time historical news to
+  backtest the tilt against — treat it as context, not validated signal. Note also the
+  backtest horizon (`backtest_horizon`, default 3) is shorter than the 12-month forecast.
 
 ## License
 
