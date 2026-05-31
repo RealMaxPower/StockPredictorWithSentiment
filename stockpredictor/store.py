@@ -14,6 +14,8 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
+from .sanitize import scrub
+
 logger = logging.getLogger("stockpredictor.store")
 
 _SCHEMA = """
@@ -110,7 +112,7 @@ class Store:
             "Close": [r["close"] for r in rows],
             "Volume": [r["volume"] for r in rows],
         }
-        logger.info("%s: price cache hit (%d rows)", ticker, len(rows))
+        logger.info("%s: price cache hit (%d rows)", scrub(ticker), len(rows))
         return pd.DataFrame(data, index=idx)
 
     # --- run history ---------------------------------------------------------
@@ -180,7 +182,7 @@ def make_cached_downloader(store: Store, base_downloader, ttl_days: int = 1):
         try:
             store.upsert_prices(ticker, df)
         except Exception as exc:  # noqa: BLE001 - caching must never break a run
-            logger.warning("%s: could not cache prices: %s", ticker, exc)
+            logger.warning("%s: could not cache prices: %s", scrub(ticker), scrub(exc))
         return df
 
     return _dl

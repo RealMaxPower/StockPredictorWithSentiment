@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from . import config
+from .sanitize import scrub
 
 logger = logging.getLogger("stockpredictor.news")
 
@@ -117,6 +118,8 @@ def fetch_articles(
     """
     cfg = cfg or config.AppConfig()
     query = build_query(ticker)
+    # Untrusted ticker/query are echoed in log lines below; scrub once for logging.
+    log_ticker, log_query = scrub(ticker), scrub(query)
     win_from, win_to = _news_window(end_date, cfg.news_lookback_days)
 
     days_old = (datetime.now(timezone.utc).date() - datetime.fromisoformat(win_to).date()).days
@@ -124,20 +127,20 @@ def fetch_articles(
         logger.warning(
             "%s: requested news window ends %s (%d days ago) — NewsAPI free tier "
             "(~%d days) likely cannot serve it; will degrade to no-news.",
-            ticker,
+            log_ticker,
             win_to,
             days_old,
             _FREE_TIER_DAYS,
         )
 
-    logger.info("%s: news query %s, window %s..%s", ticker, query, win_from, win_to)
+    logger.info("%s: news query %s, window %s..%s", log_ticker, log_query, win_from, win_to)
     tried_without_dates = False
 
     for attempt in range(cfg.max_retries):
         try:
             if attempt > 0:
                 wait = 2**attempt
-                logger.warning("%s: retry %d in %ds", ticker, attempt, wait)
+                logger.warning("%s: retry %d in %ds", log_ticker, attempt, wait)
                 sleeper(wait)
 
             kwargs = {
@@ -154,7 +157,7 @@ def fetch_articles(
 
             if resp.get("code"):
                 code, msg = resp.get("code", ""), resp.get("message", "")
-                logger.warning("%s: NewsAPI error (%s): %s", ticker, code, msg)
+                logger.warning("%s: NewsAPI error (%s): %s", log_ticker, scrub(code), scrub(msg))
                 if (
                     code == "parameterInvalid"
                     and "far in the past" in msg
@@ -174,19 +177,19 @@ def fetch_articles(
                 if attempt < cfg.max_retries - 1:
                     continue
             else:
-                logger.info("%s: fetched %d articles", ticker, len(articles))
+                logger.info("%s: fetched %d articles", log_ticker, len(articles))
                 return [_normalize(a) for a in articles]
 
         except Exception as exc:  # noqa: BLE001 - networking is best-effort
             msg = str(exc)
-            logger.warning("%s: attempt %d failed: %s", ticker, attempt + 1, msg)
+            logger.warning("%s: attempt %d failed: %s", log_ticker, attempt + 1, scrub(msg))
             if (
                 "parameterInvalid" in msg or "too far in the past" in msg
             ) and not tried_without_dates:
                 tried_without_dates = True
                 continue
             if attempt == cfg.max_retries - 1:
-                logger.error("%s: all news attempts failed; using no news", ticker)
+                logger.error("%s: all news attempts failed; using no news", log_ticker)
                 return []
 
     return []
