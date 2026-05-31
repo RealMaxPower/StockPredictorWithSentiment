@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Stock Predictor With Sentiment"
+type: software
+authors:
+  - family-names: Cahill
+    given-names: Marshall
+version: 0.2.0
+license: GPL-3.0-or-later
+repository-code: "https://github.com/RealMaxPower/StockPredictorWithSentiment"
+url: "https://github.com/RealMaxPower/StockPredictorWithSentiment"
+keywords:
+  - stocks
+  - forecasting
+  - sentiment
+  - holt-winters
+  - newsapi
+  - prediction-intervals
+abstract: "An educational tool that forecasts historical stock prices with prediction intervals and contextualizes them with news-sentiment analysis; it is not financial advice."

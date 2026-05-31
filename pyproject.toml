@@ -9,7 +9,7 @@ description = "Historical price forecasting with prediction intervals and news-s
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "GPL-3.0-or-later" }
-authors = [{ name = "RealMaxPower" }]
+authors = [{ name = "Marshall Cahill", email = "contactme@marshallcahill.com" }]
 keywords = ["stocks", "forecasting", "sentiment", "holt-winters", "newsapi"]
 
 dependencies = [
