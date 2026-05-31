@@ -9,15 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-_Nothing yet._
+- Empirical out-of-sample interval coverage (`coverage80` / `coverage95`) in the
+  walk-forward backtest, reported in the CLI alongside the live forecast bands.
 
 ### Changed
 
-_Nothing yet._
+- Resample to the month-end close (configurable `monthly_agg`, default `"last"`)
+  instead of the within-month average, which smoothed the series and inflated the
+  skill metrics. Expect lower, more honest numbers.
+- Fit Holt-Winters in log space so trend and seasonality scale with the price
+  level and the point forecast and interval bounds stay strictly positive.
 
 ### Fixed
 
-_Nothing yet._
+- Interactive Plotly chart: the disclaimer no longer overlaps the date axis,
+  prediction-band edges no longer render stray marker dots, and legend colors are
+  pinned to match the static PNG.
 
 ## [0.2.0]
 
