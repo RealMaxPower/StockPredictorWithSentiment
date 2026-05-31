@@ -50,6 +50,9 @@ htmlcov/
 *.swp
 *.swo
 
+# Agent / local tooling state
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

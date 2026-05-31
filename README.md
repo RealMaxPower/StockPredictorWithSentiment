@@ -1,5 +1,9 @@
 # Stock Predictor With Sentiment
 
+[![CI](https://github.com/RealMaxPower/StockPredictorWithSentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/RealMaxPower/StockPredictorWithSentiment/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
+
 Forecasts the next 12 months of a stock's price from its history **with prediction
 intervals**, contextualizes it with recent news sentiment, and — crucially —
 **measures whether the forecast actually beats naive baselines** before you trust it.

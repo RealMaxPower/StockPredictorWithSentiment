@@ -1,0 +1,28 @@
+# Dependabot configuration for StockPredictorWithSentiment.
+# This complements the pip-audit CI job: pip-audit flags known vulnerabilities
+# in installed dependencies, while Dependabot opens PRs to keep those
+# dependencies (and GitHub Actions) up to date in the first place.
+version: 2
+updates:
+  # Python dependencies (requirements.txt + pyproject.toml).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "pip"
+
+  # GitHub Actions used in CI workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"

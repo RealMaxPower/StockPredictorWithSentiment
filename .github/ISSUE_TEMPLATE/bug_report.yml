@@ -1,0 +1,102 @@
+name: Bug report
+description: Report a reproducible problem with StockPredictorWithSentiment
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+
+        **Before you continue, please remember:** StockPredictorWithSentiment is an
+        educational tool. It is **NOT financial advice** and must not be used to make
+        real trading or investment decisions.
+
+        Because forecasting is inherently uncertain, **inaccurate forecasts are NOT
+        bugs.** The tool intentionally reports prediction intervals, bounded sentiment,
+        and backtest metrics precisely because point predictions are unreliable. Please
+        do not open issues asking why a forecast "was wrong" or did not match the real
+        market — that is expected behavior, not a defect.
+
+        A bug is something like a crash, a traceback, incorrect math, broken CLI flags,
+        a dashboard rendering error, or behavior that contradicts the documentation.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug, including what you observed.
+      placeholder: Describe the unexpected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Give the exact command line you ran, including the ticker(s), `--start`, and
+        `--end` arguments (and any other flags). Precise reproduction steps are the
+        single most useful thing for diagnosing a bug.
+      placeholder: |
+        e.g.
+        python -m stockpredictor AAPL --start 2024-01-01 --end 2024-06-30
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+      placeholder: Describe what you expected.
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+      description: Which release version (e.g. 0.2.0) or git commit SHA were you running?
+      placeholder: "0.2.0 or a5e4439"
+    validations:
+      required: false
+  - type: dropdown
+    id: python-version
+    attributes:
+      label: Python version
+      description: Which Python version were you using?
+      options:
+        - "3.9"
+        - "3.11"
+        - "3.12"
+        - other
+    validations:
+      required: false
+  - type: dropdown
+    id: sentiment-involved
+    attributes:
+      label: Involved sentiment / NewsAPI?
+      description: Did the bug involve the news sentiment feature or NewsAPI?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traceback
+      description: Paste any relevant logs or the full traceback. This will be rendered as code.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      description: Please confirm the following before submitting.
+      options:
+        - label: I have searched the existing issues and this has not already been reported.
+          required: true
+        - label: >
+            This is NOT a security issue. Security vulnerabilities must be reported
+            privately per SECURITY.md, not in a public issue.
+          required: false

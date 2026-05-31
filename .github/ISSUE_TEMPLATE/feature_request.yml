@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest an idea or improvement for StockPredictorWithSentiment
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement!
+
+        StockPredictorWithSentiment is an **educational tool** and is **NOT financial
+        advice.** Please keep proposals aligned with that goal: honest demonstrations of
+        forecasting and sentiment, not trading signals or investment recommendations.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: >
+        What problem are you trying to solve, or what is missing today? Explain the
+        motivation rather than jumping straight to a solution.
+      placeholder: Describe the problem or motivation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the change or feature you would like to see.
+      placeholder: Describe your proposed solution.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any alternative solutions or workarounds you have considered.
+      placeholder: Describe alternatives.
+    validations:
+      required: false
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      description: Please confirm the following before submitting.
+      options:
+        - label: >
+            I understand this project must remain an honest educational demo. This
+            request does not frame the tool as a trading signal or investment advice,
+            and it preserves the bounded sentiment, prediction intervals, and backtest
+            features.
+          required: true
+        - label: I have searched the existing issues and this has not already been requested.
+          required: false
