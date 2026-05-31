@@ -61,6 +61,7 @@ MAX_WEIGHT = 1.0  # long-only, no leverage: weight is clipped to [0, 1]
 TARGET_VOL = 0.10  # annualized volatility target for vol-sizing
 KELLY_FRACTION = 0.25  # fractional Kelly (full Kelly is never the default)
 CONFIDENCE_FLOOR = 0.0  # minimum signal confidence to take any position
+MIN_EXCESS_RETURN = 0.0  # per-period excess return (μ−rf) required to go long
 SIM_WARMUP_MONTHS = MIN_MONTHS_FOR_ANY_FIT  # history needed before the first trade
 HOLDOUT_PERIODS = 12  # final out-of-sample slice, touched exactly once
 
@@ -122,6 +123,7 @@ class AppConfig:
     target_vol: float = TARGET_VOL
     kelly_fraction: float = KELLY_FRACTION
     confidence_floor: float = CONFIDENCE_FLOOR
+    min_excess_return: float = MIN_EXCESS_RETURN  # per-period μ−rf above which we go long
     sizing_method: str = "vol"  # "vol" (volatility targeting) | "kelly"
     holdout_periods: int = HOLDOUT_PERIODS
 
