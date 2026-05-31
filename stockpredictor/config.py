@@ -64,6 +64,9 @@ CONFIDENCE_FLOOR = 0.0  # minimum signal confidence to take any position
 MIN_EXCESS_RETURN = 0.0  # per-period excess return (μ−rf) required to go long
 SIM_WARMUP_MONTHS = MIN_MONTHS_FOR_ANY_FIT  # history needed before the first trade
 HOLDOUT_PERIODS = 12  # final out-of-sample slice, touched exactly once
+# Below this many rebalances, annualized CAGR/Sharpe are extrapolated from too few
+# points to trust; the scorecard says so loudly rather than printing a tidy lie.
+MIN_RELIABLE_PERIODS = 24  # ~2 years of monthly rebalances
 
 DISCLAIMER = "Educational demo — not financial advice."
 

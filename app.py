@@ -84,6 +84,12 @@ def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
         return
 
     st.subheader("Paper-trading simulation (after costs, out-of-sample)")
+    if report.scorecard.n_periods < config.MIN_RELIABLE_PERIODS:
+        st.warning(
+            f"⚠ Small sample: only {report.scorecard.n_periods} rebalances. Annualized "
+            f"CAGR/Sharpe are extrapolated from too few points to trust — widen the date "
+            f"range (≥ ~{config.MIN_RELIABLE_PERIODS} months, ideally several years)."
+        )
     try:
         st.plotly_chart(
             plotting.build_equity_figure(report.result, ticker), use_container_width=True
@@ -220,8 +226,10 @@ def main() -> None:
         default_tickers = PRESETS[preset] if preset in PRESETS else "AAPL"
         tickers_raw = st.text_input("Tickers (comma-separated)", value=default_tickers)
         today = dt.date.today()
-        # Default to the last 12 months (a longer range unlocks the seasonal model).
-        start = st.date_input("Start", value=today - dt.timedelta(days=365)).isoformat()
+        # Default to ~10 years: long enough for the seasonal model AND for the
+        # paper-trading simulation's annualized metrics to be meaningful (a short
+        # window yields only a handful of rebalances and noisy CAGR/Sharpe).
+        start = st.date_input("Start", value=today - dt.timedelta(days=365 * 10)).isoformat()
         end = st.date_input("End", value=today).isoformat()
         page_size = st.slider("Headlines", 1, 20, config.PAGE_SIZE)
         sentiment_enabled = st.checkbox("Apply sentiment tilt", value=True)

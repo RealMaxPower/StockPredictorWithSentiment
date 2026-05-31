@@ -49,10 +49,6 @@ def test_metrics_nan_safe_on_degenerate_curve():
     assert m.n_periods == 0
 
 
-def _flat(value: float, n: int = 25) -> pd.Series:
-    return _curve([value] * n)
-
-
 def test_scorecard_yes_when_strategy_dominates():
     strat = _curve(np.linspace(1.0, 2.0, 25))  # doubles
     bh = _curve(np.linspace(1.0, 1.2, 25))  # +20%
@@ -98,3 +94,20 @@ def test_format_scorecard_contains_verdict_warning_and_disclaimer():
     assert "likely overfit" in text
     assert "Held-out period:" in text
     assert config.DISCLAIMER in text
+
+
+def _scorecard_with_n(n_points: int) -> evaluation.Scorecard:
+    strat = _curve(np.linspace(1.0, 1.2, n_points))
+    bh = _curve(np.linspace(1.0, 1.3, n_points))
+    rf = _curve(np.linspace(1.0, 1.05, n_points))
+    return evaluation.build_scorecard(
+        strat, bh, rf, pd.Series([0.1] * (n_points - 1)), rf_annual=0.0
+    )
+
+
+def test_small_sample_warning_appears_only_when_few_periods():
+    short = _scorecard_with_n(6)  # 5 periods < 24
+    long = _scorecard_with_n(40)  # 39 periods >= 24
+    assert short.n_periods < config.MIN_RELIABLE_PERIODS
+    assert "SMALL SAMPLE" in evaluation.format_scorecard(short)
+    assert "SMALL SAMPLE" not in evaluation.format_scorecard(long)

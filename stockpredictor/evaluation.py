@@ -214,6 +214,13 @@ def format_scorecard(
     head = f"SCORECARD — {ticker}".rstrip(" —") if ticker else "SCORECARD"
     lines = [
         f"{head} (after costs, out-of-sample)",
+    ]
+    if card.n_periods < config.MIN_RELIABLE_PERIODS:
+        lines.append(
+            f"  ⚠ SMALL SAMPLE: only {card.n_periods} rebalances — annualized CAGR/Sharpe "
+            f"are unreliable below ~{config.MIN_RELIABLE_PERIODS} months; use a longer window."
+        )
+    lines += [
         f"  Beat buy-and-hold?   {_yn(card.beat_buy_and_hold):3s}  "
         f"(excess CAGR: {_pct(card.excess_cagr_vs_bh)}, excess Sharpe: {card.excess_sharpe_vs_bh:+.2f})",
         f"  Beat risk-free?      {_yn(card.beat_risk_free):3s}  (excess CAGR: {_pct(card.excess_cagr_vs_rf)})",

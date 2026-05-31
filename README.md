@@ -238,6 +238,14 @@ recent Friday (now hardened against a missing/unwritable README and silent no-op
   NewsAPI's free tier serves ~30 days, so there is no point-in-time historical news to
   backtest the tilt against — treat it as context, not validated signal. Note also the
   backtest horizon (`backtest_horizon`, default 3) is shorter than the 12-month forecast.
+- **`stock-forecast: No module named 'stockpredictor'`**: some Python builds don't
+  process `.pth` files, so an editable install's console script can't find the package.
+  Run from the checkout via `python3 stock_forecast_with_sentiment.py ...` or
+  `python -m stockpredictor.cli ...` (both add the repo to the path), or do a regular
+  `pip install .` (non-editable) so the package lands in site-packages.
+- **Simulation metrics look extreme on a short range**: annualized CAGR/Sharpe need
+  enough rebalances to mean anything. Below ~24 months the scorecard prints a
+  `SMALL SAMPLE` warning — widen `--start`/`--end` (several years) for a trustworthy read.
 
 ## License
 
