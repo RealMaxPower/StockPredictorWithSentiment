@@ -87,6 +87,25 @@ def test_variant_id_is_deterministic_and_sensitive():
     assert a != c
 
 
+def test_build_weight_fn_applies_cfg_sizing():
+    """The assembled WeightFn runs gate → sizing: a bullish signal is sized < cap."""
+    from stockpredictor import sizing
+
+    cfg = config.AppConfig(sizing_method="vol", target_vol=0.10, max_weight=1.0)
+    bullish = lambda _h, _c: _signal(0.05, sigma=0.10)  # noqa: E731
+    wf = strategy.build_weight_fn(cfg, signal_fn=bullish)
+    expected = sizing.size_position(_signal(0.05, sigma=0.10), cfg)
+    assert wf(pd.Series([1.0, 2.0]), cfg) == pytest.approx(expected)
+    assert 0.0 < expected < cfg.max_weight  # genuinely sized, not just the cap
+
+
+def test_build_weight_fn_real_forecast_path_runs(monthly, cfg):
+    """Default path (real forecast signal + cfg sizing) drives the simulator cleanly."""
+    res = simulate(monthly, strategy.build_weight_fn(cfg), cfg)
+    assert (res.weights >= 0.0).all()
+    assert (res.weights <= cfg.max_weight + 1e-12).all()
+
+
 # --- Synthetic zero-edge / known-edge checks ---------------------------------
 def _momentum_signal(history: pd.Series, _cfg: config.AppConfig) -> Signal:
     """Naive predictor: next return ≈ last observed return. Only works if returns
