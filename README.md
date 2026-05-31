@@ -162,6 +162,11 @@ SCORECARD — AAPL (after costs, out-of-sample)
   single-name timing — not a bug or a failure of the code. The value of this layer
   is *measuring* that truthfully, including (and especially) when the answer is NO.
 
+To write up a study honestly, use [`docs/RESULTS_TEMPLATE.md`](docs/RESULTS_TEMPLATE.md):
+it pre-registers your expectation *before* you look at the curves, requires every ticker
+to be reported (no cherry-picking), gates a suspicion checklist behind any good-looking
+result, and makes the limitations section non-optional.
+
 ### Known limitation: survivorship bias
 
 yfinance serves only **currently-listed** tickers, so any multi-name or
