@@ -82,6 +82,9 @@ After `pip install -e .` the console entry point `stock-forecast ...` works too.
 
 Useful flags: `--no-sentiment`, `--sentiment-model {vader,finbert}`, `--no-backtest`,
 `--compare-models`, `--no-cache`, `--db PATH`, `--log-level {DEBUG,INFO,WARNING,ERROR}`.
+Paper-trading simulation (see [below](#simulated-betting--position-sizing-paper-trading)):
+`--simulate`, `--sizing {vol,kelly}`, `--rf-rate`, `--commission-bps`, `--spread-bps`,
+`--slippage-bps`, `--target-vol`, `--kelly-fraction`, `--holdout`.
 
 Each run writes, per ticker, into `stock_plots/YYYY-MM-DD/`:
 `TICKER_forecasts.png`, `TICKER_forecast.html` (interactive), `TICKER_news.json`,
@@ -95,7 +98,79 @@ streamlit run app.py     # needs the `app` extra (streamlit)
 
 Pick a ticker (or a preset watchlist), date range, and headline count; see the
 interactive chart with its uncertainty band, the sentiment, the backtest table,
-and the headlines that informed it.
+and the headlines that informed it. Tick **Paper-trading simulation** to add the
+equity-curve overlay and scorecard described below.
+
+## Simulated betting & position sizing (paper trading)
+
+> ⚠️ **Educational demo — not financial advice. Paper trading only.** This layer
+> moves *simulated* numbers in memory and SQLite. There is no broker, no order
+> execution, and no "buy now" output. Nothing here is a recommendation.
+
+A forecast tells you *where the price might go*. It does **not** tell you whether
+*trading on it would have made money after costs* — those are different questions,
+and a well-calibrated forecast is not an edge. This optional layer answers the
+second question honestly:
+
+```
+forecast + intervals  →  signal (μ, σ, confidence)
+        signal         →  long-only target weight (threshold over the risk-free rate)
+        target weight  →  size (volatility targeting, or fractional Kelly)
+        positions      →  simulate the book WITH costs, walk-forward
+        equity curve   →  scorecard vs buy-and-hold AND the risk-free rate
+```
+
+Run it from the CLI with `--simulate`:
+
+```bash
+stock-forecast --tickers AAPL --start 2010-01-01 --end 2024-12-31 \
+  --simulate --sizing vol --rf-rate 0.04 \
+  --commission-bps 1 --spread-bps 5 --slippage-bps 5
+```
+
+Each simulated ticker writes `TICKER_SIM_equity.png` / `.html` (strategy vs
+buy-and-hold vs risk-free) and `TICKER_SIM_metrics.json` (all metrics + the cost
+assumptions + the variant id), and prints a plain-language scorecard:
+
+```
+SCORECARD — AAPL (after costs, out-of-sample)
+  Beat buy-and-hold?   NO   (excess CAGR: -2.3%, excess Sharpe: -0.18)
+  Beat risk-free?      YES  (excess CAGR: +1.1%)
+  Strategy CAGR:       +5.1%  | Sharpe +0.41
+  Max drawdown:        -22.4%
+  Turnover (ann.):     3.2x
+  Variants tried:      4    ⚠ best-of-N is likely overfit; see held-out result below
+  Held-out period:     beat BH=NO, beat RF=YES, CAGR +0.8% over 12 mo (touched once)
+  ⚠ Educational demo — not financial advice.
+```
+
+### What keeps it honest (and why a "NO" is the expected answer)
+
+- **No lookahead.** The weight at month *t* is computed only from prices with
+  timestamps ≤ *t*; it then earns the realized *t→t+1* return it never saw. The
+  test suite includes a *leakage tripwire* (shifting the signal one period into the
+  future must markedly improve results — if it didn't, the harness would be leaking).
+- **Costs are always on.** Every simulated trade pays commission + half-spread +
+  slippage. There is **no gross-of-costs headline number**, anywhere.
+- **Benchmarked against both** buy-and-hold *and* the risk-free rate, out of sample.
+  Raw return is never the result; excess over both is.
+- **Multiple-testing discipline.** Every variant you run is logged to SQLite; the
+  scorecard reports **how many were tried** and warns that the best-looking one is
+  likely overfit. A **held-out final slice** is reported separately as the
+  once-touched check. Do not present the best of N runs as "the result."
+- **No durable edge after costs is the expected, honest outcome** for monthly
+  single-name timing — not a bug or a failure of the code. The value of this layer
+  is *measuring* that truthfully, including (and especially) when the answer is NO.
+
+### Known limitation: survivorship bias
+
+yfinance serves only **currently-listed** tickers, so any multi-name or
+cross-sectional study is biased upward (the delisted losers are invisible). This
+layer does not have a point-in-time, delisting-aware universe, so it **does not
+present cross-sectional stock-picking results**. Prefer the single-ticker timing
+studies it ships with, which are far less exposed to this bias; treat any
+multi-ticker comparison as illustrative only. A point-in-time universe (and
+deflated-Sharpe multiple-testing correction) is explicit future work.
 
 ## How it works
 
@@ -119,10 +194,16 @@ stockpredictor/
   forecast.py   Holt-Winters + intervals + baselines + backtest + metrics
   sentiment.py  scoring (VADER/FinBERT) + structured aggregation + bounded tilt
   news.py       NewsAPI fetch with retry/backoff, window anchored to --end
-  plotting.py   matplotlib PNG (shaded intervals) + Plotly HTML
-  pipeline.py   run_ticker() — the shared core used by CLI and dashboard
+  plotting.py   matplotlib PNG (shaded intervals) + Plotly HTML + equity overlay
+  pipeline.py   run_ticker() / run_simulation() — the shared core for CLI + dashboard
   models.py     SARIMAX / gradient-boosting + backtest-based selection
-  store.py      optional SQLite price cache + run history
+  costs.py      pure transaction-cost model (commission + spread + slippage)
+  signals.py    forecast + intervals → normalized trading Signal (μ, σ, confidence)
+  strategy.py   long-only threshold rule + signal→weight composition + variant id
+  sizing.py     position sizing: volatility targeting / fractional Kelly
+  portfolio.py  point-in-time, cost-aware paper-trading simulator + benchmarks
+  evaluation.py equity-curve metrics (Sharpe/Sortino/maxDD/…) + honest scorecard
+  store.py      optional SQLite price cache + run history + simulation log
   cli.py        argparse entry point
 app.py          Streamlit dashboard
 stock_forecast_with_sentiment.py   backward-compatible shim

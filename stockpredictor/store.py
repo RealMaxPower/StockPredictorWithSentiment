@@ -34,6 +34,13 @@ CREATE TABLE IF NOT EXISTS articles (
     run_id INTEGER, ticker TEXT, url TEXT, title TEXT, source TEXT,
     published_at TEXT, sentiment REAL
 );
+CREATE TABLE IF NOT EXISTS simulations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT, run_date TEXT, variant_id TEXT, sizing_method TEXT,
+    rf_annual REAL, beat_bh INTEGER, beat_rf INTEGER,
+    excess_cagr_vs_bh REAL, excess_sharpe_vs_bh REAL, strategy_cagr REAL,
+    max_drawdown REAL, turnover_annual REAL, scorecard_json TEXT
+);
 """
 
 
@@ -164,6 +171,56 @@ class Store:
         return pd.read_sql_query(
             "SELECT run_date, sentiment_label, sentiment_mean, sentiment_effective, "
             "sentiment_n, seasonal_used FROM runs WHERE ticker=? ORDER BY run_date",
+            self.conn,
+            params=(ticker.upper(),),
+        )
+
+    # --- simulation history (multiple-testing accounting) --------------------
+    def save_simulation(self, ticker: str, variant_id: str, scorecard, cfg) -> int:
+        """Log one paper-trading run so the best-of-N overfit warning can be honest.
+
+        Every strategy/parameter variant tried accumulates a row here; ``count_
+        simulations`` reads them back so the reporting layer can say how many were
+        attempted (brief §3.5).
+        """
+        run_date = datetime.now().isoformat(timespec="seconds")
+        cur = self.conn.execute(
+            "INSERT INTO simulations (ticker, run_date, variant_id, sizing_method, "
+            "rf_annual, beat_bh, beat_rf, excess_cagr_vs_bh, excess_sharpe_vs_bh, "
+            "strategy_cagr, max_drawdown, turnover_annual, scorecard_json) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ticker.upper(),
+                run_date,
+                variant_id,
+                cfg.sizing_method,
+                cfg.rf_annual,
+                int(scorecard.beat_buy_and_hold),
+                int(scorecard.beat_risk_free),
+                scorecard.excess_cagr_vs_bh,
+                scorecard.excess_sharpe_vs_bh,
+                scorecard.strategy.cagr,
+                scorecard.max_drawdown,
+                scorecard.turnover_annual,
+                json.dumps(scorecard.as_dict()),
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid or 0)
+
+    def count_simulations(self, ticker: str) -> int:
+        """How many simulation variants have been logged for this ticker (≥ 1)."""
+        cur = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM simulations WHERE ticker=?", (ticker.upper(),)
+        )
+        row = cur.fetchone()
+        return int(row["n"]) if row else 0
+
+    def simulation_history(self, ticker: str) -> pd.DataFrame:
+        return pd.read_sql_query(
+            "SELECT run_date, variant_id, sizing_method, beat_bh, beat_rf, "
+            "excess_cagr_vs_bh, strategy_cagr, max_drawdown, turnover_annual "
+            "FROM simulations WHERE ticker=? ORDER BY run_date",
             self.conn,
             params=(ticker.upper(),),
         )

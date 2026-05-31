@@ -7,7 +7,7 @@ import os
 import time
 from datetime import datetime
 
-from . import config, data, forecast, pipeline
+from . import config, data, evaluation, forecast, pipeline
 from .sanitize import sanitize_ticker
 
 
@@ -44,6 +44,39 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--db", default="stockpredictor.db", help="SQLite database path")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+
+    sim = p.add_argument_group(
+        "simulated betting (paper trading only — educational demo, not financial advice)"
+    )
+    sim.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Run the cost-aware, out-of-sample paper-trading simulation and print a scorecard",
+    )
+    sim.add_argument(
+        "--sizing", choices=["vol", "kelly"], default="vol", help="Position-sizing method"
+    )
+    sim.add_argument(
+        "--rf-rate",
+        type=float,
+        default=config.RF_ANNUAL,
+        help="Annual risk-free rate (sizing + benchmark)",
+    )
+    sim.add_argument("--commission-bps", type=float, default=config.COMMISSION_BPS)
+    sim.add_argument("--spread-bps", type=float, default=config.SPREAD_BPS)
+    sim.add_argument("--slippage-bps", type=float, default=config.SLIPPAGE_BPS)
+    sim.add_argument(
+        "--target-vol", type=float, default=config.TARGET_VOL, help="Annualized vol target (vol)"
+    )
+    sim.add_argument(
+        "--kelly-fraction", type=float, default=config.KELLY_FRACTION, help="Fractional Kelly λ"
+    )
+    sim.add_argument(
+        "--holdout",
+        type=int,
+        default=config.HOLDOUT_PERIODS,
+        help="Months in the once-touched held-out slice",
+    )
     return p
 
 
@@ -113,6 +146,30 @@ def _summarize(result: pipeline.TickerResult, logger) -> None:
         )
 
 
+def _run_and_print_simulation(ticker, cfg, result, out_dir, store, logger) -> None:
+    """Run the paper-trading simulation for one ticker and print its scorecard.
+
+    Reuses the monthly series already computed for the forecast (no refetch), logs
+    the variant to the store for multiple-testing accounting, and writes the
+    SIM_metrics.json + equity-curve artifacts.
+    """
+    try:
+        report = pipeline.run_simulation(ticker, cfg, monthly=result.monthly, store=store)
+    except (ValueError, forecast.InsufficientDataError) as exc:
+        logger.error("%s: simulation skipped — %s", ticker, exc)
+        return
+    pipeline.persist_simulation_outputs(report, out_dir, cfg)
+    print()  # blank line so the scorecard stands apart from the log stream
+    print(
+        evaluation.format_scorecard(
+            report.scorecard,
+            ticker=ticker,
+            variants_tried=report.variants_tried,
+            holdout=report.holdout,
+        )
+    )
+
+
 def main(argv: list | None = None) -> int:
     args = _build_parser().parse_args(argv)
     logger = config.setup_logging(args.log_level)
@@ -136,6 +193,14 @@ def main(argv: list | None = None) -> int:
         sentiment_model=args.sentiment_model,
         use_cache=not args.no_cache,
         db_path=args.db,
+        sizing_method=args.sizing,
+        rf_annual=args.rf_rate,
+        commission_bps=args.commission_bps,
+        spread_bps=args.spread_bps,
+        slippage_bps=args.slippage_bps,
+        target_vol=args.target_vol,
+        kelly_fraction=args.kelly_fraction,
+        holdout_periods=args.holdout,
     )
     if not cfg.tickers:
         logger.error("No valid tickers provided.")
@@ -173,6 +238,8 @@ def main(argv: list | None = None) -> int:
                 if store is not None:
                     store.save_run(result, run_date, cfg)
                 _summarize(result, logger)
+                if args.simulate:
+                    _run_and_print_simulation(ticker, cfg, result, out_dir, store, logger)
             except (ValueError, forecast.InsufficientDataError) as exc:
                 logger.error("%s: skipped — %s", ticker, exc)
                 failures += 1
