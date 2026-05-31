@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from . import config
 from .forecast import ForecastResult
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .portfolio import SimulationResult
 
 logger = logging.getLogger("stockpredictor.plotting")
 
@@ -83,6 +87,116 @@ def plot_forecast(
     plt.close(fig)
     logger.info("%s: saved plot %s", ticker, path)
     return path
+
+
+def plot_equity_curve(
+    result: SimulationResult,
+    ticker: str,
+    out_dir: str,
+    cfg: config.AppConfig,
+) -> str:
+    """Save a PNG overlaying strategy vs buy-and-hold vs risk-free equity curves.
+
+    ``result`` is a ``portfolio.SimulationResult``; imported lazily to avoid a
+    hard dependency from ``plotting`` onto the simulation layer.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.plot(
+        result.equity.index,
+        result.equity.values,
+        label="Strategy (after costs)",
+        color="#1f77b4",
+        linewidth=2,
+    )
+    ax.plot(
+        result.benchmark_bh.index,
+        result.benchmark_bh.values,
+        label="Buy & hold",
+        color="#ff7f0e",
+    )
+    ax.plot(
+        result.benchmark_rf.index,
+        result.benchmark_rf.values,
+        label=f"Risk-free ({result.rf_annual:.1%})",
+        color="#2ca02c",
+        linestyle="--",
+    )
+    title = f"{ticker}: simulated equity curve (out-of-sample, after costs)"
+    if result.peek:
+        title += f" ⚠ LEAKED peek={result.peek}"
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Equity (start = 1.0)")
+    ax.legend(loc="upper left", fontsize=8)
+    fig.text(
+        0.99,
+        0.01,
+        config.DISCLAIMER,
+        ha="right",
+        va="bottom",
+        fontsize=7,
+        color="gray",
+        style="italic",
+    )
+    fig.tight_layout()
+
+    path = os.path.join(out_dir, f"{ticker}_SIM_equity.png")
+    fig.savefig(path, dpi=cfg.plot_dpi)
+    plt.close(fig)
+    logger.info("%s: saved equity curve %s", ticker, path)
+    return path
+
+
+def write_equity_html(result: SimulationResult, ticker: str, out_dir: str) -> str | None:
+    """Write a self-contained interactive Plotly equity overlay. No-op if no plotly."""
+    try:
+        fig = build_equity_figure(result, ticker)
+    except ImportError:
+        logger.info("%s: plotly not installed; skipping equity HTML", ticker)
+        return None
+    path = os.path.join(out_dir, f"{ticker}_SIM_equity.html")
+    fig.write_html(path, include_plotlyjs="cdn")
+    logger.info("%s: saved interactive equity chart %s", ticker, path)
+    return path
+
+
+def build_equity_figure(result: SimulationResult, ticker: str):
+    """Plotly figure overlaying strategy vs BH vs RF (shared by HTML export + app)."""
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_scatter(
+        x=result.equity.index,
+        y=result.equity.values,
+        name="Strategy (after costs)",
+        line=dict(color="#1f77b4", width=2),
+    )
+    fig.add_scatter(
+        x=result.benchmark_bh.index,
+        y=result.benchmark_bh.values,
+        name="Buy & hold",
+        line=dict(color="#ff7f0e"),
+    )
+    fig.add_scatter(
+        x=result.benchmark_rf.index,
+        y=result.benchmark_rf.values,
+        name=f"Risk-free ({result.rf_annual:.1%})",
+        line=dict(color="#2ca02c", dash="dash"),
+    )
+    title = f"{ticker}: simulated equity (out-of-sample, after costs)"
+    title += f"<br><sup>{config.DISCLAIMER}</sup>"
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Equity (start = 1.0)",
+        xaxis_rangeslider_visible=True,
+    )
+    return fig
 
 
 def write_interactive_html(

@@ -46,7 +46,35 @@ INTER_TICKER_SLEEP = 1.0
 # --- Plot defaults -----------------------------------------------------------
 PLOT_DPI = 150
 
+# --- Simulation / trading-cost defaults --------------------------------------
+# Paper-trading only: these drive a *simulated* book, never a real order.
+# Defaults are deliberately conservative (retail-realistic) so a backtest is not
+# flattered by free, frictionless trading. Costs are ALWAYS applied — there is no
+# gross-of-cost headline. See ``costs.py`` and ``portfolio.py``.
+PERIODS_PER_YEAR = 12  # monthly rebalance cadence, matching the forecast
+COMMISSION_BPS = 1.0  # broker commission per trade leg (bps of notional)
+SPREAD_BPS = 5.0  # full bid/ask spread (bps); a trade crosses half of it
+SLIPPAGE_BPS = 5.0  # market-impact / slippage (bps of notional)
+FIXED_FEE = 0.0  # optional flat fee per (non-zero) trade, in currency
+RF_ANNUAL = 0.04  # risk-free rate; a constant default emits a warning
+MAX_WEIGHT = 1.0  # long-only, no leverage: weight is clipped to [0, 1]
+TARGET_VOL = 0.10  # annualized volatility target for vol-sizing
+KELLY_FRACTION = 0.25  # fractional Kelly (full Kelly is never the default)
+CONFIDENCE_FLOOR = 0.0  # minimum signal confidence to take any position
+SIM_WARMUP_MONTHS = MIN_MONTHS_FOR_ANY_FIT  # history needed before the first trade
+HOLDOUT_PERIODS = 12  # final out-of-sample slice, touched exactly once
+
 DISCLAIMER = "Educational demo — not financial advice."
+
+
+def periodic_rate(annual_rate: float, periods_per_year: int = PERIODS_PER_YEAR) -> float:
+    """Convert an annual rate to the equivalent compounded per-period rate.
+
+    Shared by the simulator (cash/risk-free leg), the strategy threshold (excess
+    over RF), and the evaluation metrics so the risk-free convention never
+    diverges between them.
+    """
+    return (1.0 + annual_rate) ** (1.0 / periods_per_year) - 1.0
 
 
 @dataclass
@@ -81,6 +109,21 @@ class AppConfig:
 
     use_cache: bool = True
     db_path: str = "stockpredictor.db"
+
+    # --- Simulated betting / position-sizing layer ---------------------------
+    # Trading costs (bps of traded notional) — always applied in the simulator.
+    commission_bps: float = COMMISSION_BPS
+    spread_bps: float = SPREAD_BPS
+    slippage_bps: float = SLIPPAGE_BPS
+    fixed_fee: float = FIXED_FEE
+    # Risk-free, position limits, and sizing.
+    rf_annual: float = RF_ANNUAL
+    max_weight: float = MAX_WEIGHT
+    target_vol: float = TARGET_VOL
+    kelly_fraction: float = KELLY_FRACTION
+    confidence_floor: float = CONFIDENCE_FLOOR
+    sizing_method: str = "vol"  # "vol" (volatility targeting) | "kelly"
+    holdout_periods: int = HOLDOUT_PERIODS
 
 
 def setup_logging(level: str = "INFO") -> logging.Logger:
