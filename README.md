@@ -165,7 +165,10 @@ SCORECARD — AAPL (after costs, out-of-sample)
 To write up a study honestly, use [`docs/RESULTS_TEMPLATE.md`](docs/RESULTS_TEMPLATE.md):
 it pre-registers your expectation *before* you look at the curves, requires every ticker
 to be reported (no cherry-picking), gates a suspicion checklist behind any good-looking
-result, and makes the limitations section non-optional.
+result, and makes the limitations section non-optional. A worked example over 20 real
+names lives in [`docs/RESULTS.md`](docs/RESULTS.md), and a pre-registered screen deciding
+*against* building further signal work is recorded in
+[`docs/PHASE5_DECISION.md`](docs/PHASE5_DECISION.md).
 
 ### Known limitation: survivorship bias
 
