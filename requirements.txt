@@ -3,4 +3,4 @@ newsapi-python==0.2.7
 pandas==2.3.2
 statsmodels==0.14.6
 vaderSentiment==3.3.2
-yfinance==0.2.65
+yfinance==1.4.1
