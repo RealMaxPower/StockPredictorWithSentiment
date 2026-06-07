@@ -60,3 +60,6 @@ Thumbs.db
 # Output files
 stock_plots/
 *.png
+# keep committed README/doc images
+!docs/images/
+!docs/images/*.png
