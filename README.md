@@ -1,43 +1,68 @@
 # Stock Predictor With Sentiment
 
+> **Forecast a stock's next 12 months — with honest error bars and a built-in
+> reality check on whether the forecast is worth anything.**
+
 [![CI](https://github.com/RealMaxPower/StockPredictorWithSentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/RealMaxPower/StockPredictorWithSentiment/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
+[![Status](https://img.shields.io/badge/status-v0.2%20%C2%B7%20educational%20demo-orange.svg)](#)
 
-Forecasts the next 12 months of a stock's price from its history **with prediction
-intervals**, contextualizes it with recent news sentiment, and — crucially —
-**measures whether the forecast actually beats naive baselines** before you trust it.
+This tool forecasts the next 12 months of a stock's price from its history **with
+prediction intervals**, contextualizes it with recent news sentiment, and —
+crucially — **measures whether the forecast actually beats naive baselines** before
+you trust it. It then offers an optional paper-trading layer that asks the harder
+question: *would trading on this forecast have made money after costs?* (Usually: no.)
+
+![AAPL 12-month forecast with 80%/95% prediction intervals](docs/images/forecast-hero.png)
 
 > ⚠️ **Educational demo — not financial advice.** Monthly price forecasting is hard;
 > the honest takeaway from the built-in backtest is usually "treat the wide
 > uncertainty band seriously." This tool is for learning, not trading.
 
-## What changed (v0.2)
+**At a glance:** v0.2 · 16-module Python package · ~120 tests (network mocked) ·
+CI on 3.9 / 3.11 / 3.12 · CLI + Streamlit dashboard · forecasts run with **no API key**.
+
+---
+
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [Features](#features)
+- [Install](#install)
+- [Usage](#usage) · [CLI](#cli) · [Dashboard](#dashboard)
+- [Paper trading: does the forecast actually pay?](#simulated-betting--position-sizing-paper-trading)
+- [How it works](#how-it-works)
+- [Architecture](#architecture)
+- [Stack](#stack)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License & citation](#license)
+
+---
+
+## Why this exists
 
 The original script multiplied the whole forecast by `(1 + sentiment)` — a single
 positive headline could inflate every forecast month by 50%, and nothing ever
 checked if the forecast was any good. v0.2 fixes the methodology and turns the
-script into a small, tested package:
+script into a small, tested package whose guiding principle is **measuring honestly**:
+wide-but-calibrated intervals, baselines you have to beat, costs that are always on,
+and a "NO" that is reported as proudly as a "YES."
 
-- **Bounded, decaying sentiment tilt** — the news effect is capped (±~5% in month 1)
-  and decays over the horizon, shrunk by a confidence score (sample size + agreement).
-  "No news" is distinct from "neutral"; `--no-sentiment` disables it entirely.
-- **Prediction intervals** — 80%/95% bands (Monte-Carlo simulation) instead of a
-  single deterministic line that implied false precision. The fit is done in **log
-  space**, so trend/seasonality scale with the price level and the bands stay positive.
-- **Baselines + walk-forward backtest** — every run is scored against naive,
-  seasonal-naive, and drift via rolling-origin cross-validation, reporting
-  MAE/RMSE/MAPE/**MASE**/directional accuracy **and empirical interval coverage**.
-- **Month-end forecasts** — the series is resampled to the month-end close, not the
-  within-month average, so the metrics reflect a target you could actually trade.
-- **Adjusted close + data guards** — splits/dividends no longer read as crashes;
-  seasonal fits require ≥24 months (else a non-seasonal fallback).
-- **Time-aligned news** — the news window is anchored to `--end` (not "now"), and
-  the free-tier 30-day limit is surfaced with a loud warning.
-- **Engineering** — a `stockpredictor/` package, a pytest suite (mocked network),
-  `ruff`/`mypy`, GitHub Actions CI, `pyproject.toml`, logging, and SQLite caching.
-- **Interfaces** — a Streamlit dashboard, interactive Plotly HTML, and optional
-  SARIMAX / gradient-boosting models compared on the same backtest.
+## Features
+
+| Capability | What it does |
+| --- | --- |
+| **Bounded, decaying sentiment tilt** | The news effect is capped (±~5% in month 1) and decays over the horizon, shrunk by a confidence score (sample size + agreement). "No news" is distinct from "neutral"; `--no-sentiment` disables it entirely. |
+| **Prediction intervals** | 80%/95% bands via Monte-Carlo simulation instead of a single deterministic line. The fit is in **log space**, so trend/seasonality scale with price level and bands stay positive. |
+| **Baselines + walk-forward backtest** | Every run is scored against naive, seasonal-naive, and drift via rolling-origin cross-validation — MAE/RMSE/MAPE/**MASE**/directional accuracy **and empirical interval coverage**. |
+| **Month-end forecasts** | The series is resampled to the month-end close (not the within-month average), so metrics reflect a target you could actually trade. |
+| **Adjusted close + data guards** | Splits/dividends no longer read as crashes; seasonal fits require ≥24 months (else a non-seasonal fallback). |
+| **Time-aligned news** | The news window is anchored to `--end` (not "now"), and the free-tier 30-day limit is surfaced with a loud warning. |
+| **Paper-trading simulator** | Optional, cost-aware, walk-forward book that scores a strategy against buy-and-hold *and* the risk-free rate — out of sample. See [below](#simulated-betting--position-sizing-paper-trading). |
+| **Batteries included** | A `stockpredictor/` package, pytest suite (mocked network), `ruff`/`mypy`, GitHub Actions CI, `pyproject.toml`, logging, SQLite caching, a Streamlit dashboard, and interactive Plotly HTML. |
 
 ## Install
 
@@ -96,6 +121,8 @@ and `TICKER_metrics.json` (forecast, intervals, backtest, sentiment).
 streamlit run app.py     # needs the `app` extra (streamlit)
 ```
 
+![Streamlit dashboard: interactive forecast, sentiment, and backtest table](docs/images/dashboard.png)
+
 Pick a ticker (or a preset watchlist), date range, and headline count; see the
 interactive chart with its uncertainty band, the sentiment, the backtest table,
 and the headlines that informed it. Tick **Paper-trading simulation** to add the
@@ -127,6 +154,8 @@ stock-forecast --tickers AAPL --start 2010-01-01 --end 2024-12-31 \
   --simulate --sizing vol --rf-rate 0.04 \
   --commission-bps 1 --spread-bps 5 --slippage-bps 5
 ```
+
+![Simulated equity curve: strategy vs buy-and-hold vs risk-free, after costs](docs/images/equity-curve.png)
 
 Each simulated ticker writes `TICKER_SIM_equity.png` / `.html` (strategy vs
 buy-and-hold vs risk-free) and `TICKER_SIM_metrics.json` (all metrics + the cost
@@ -217,6 +246,14 @@ app.py          Streamlit dashboard
 stock_forecast_with_sentiment.py   backward-compatible shim
 ```
 
+## Stack
+
+- **Forecasting:** statsmodels (Holt-Winters / SARIMAX), scikit-learn (gradient boosting), NumPy / pandas
+- **Sentiment:** VADER, optional FinBERT (transformers)
+- **Data:** yfinance (prices), NewsAPI (headlines), SQLite (cache + run log)
+- **Interfaces:** argparse CLI, Streamlit dashboard, matplotlib + Plotly charts
+- **Tooling:** pytest, ruff, mypy, GitHub Actions CI, pip-audit, Dependabot
+
 ## Development
 
 ```bash
@@ -227,10 +264,8 @@ mypy stockpredictor
 
 CI runs lint + types + tests across Python 3.9/3.11/3.12, plus a `pip-audit` job.
 
-## Automatic Date Updates
-
 `python3 update_readme_date.py` updates the example command's `--end` to the most
-recent Friday (now hardened against a missing/unwritable README and silent no-ops).
+recent Friday (hardened against a missing/unwritable README and silent no-ops).
 
 ## Troubleshooting
 
@@ -255,6 +290,26 @@ recent Friday (now hardened against a missing/unwritable README and silent no-op
   enough rebalances to mean anything. Below ~24 months the scorecard prints a
   `SMALL SAMPLE` warning — widen `--start`/`--end` (several years) for a trustworthy read.
 
+## Contributing
+
+Contributions of all sizes — bug reports, docs, tests, or features — are welcome.
+Please keep the project's framing intact: this is an **educational demo, not
+financial advice**, and contributions shouldn't present forecasts as trading signals.
+
+- **Start here:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, the test/lint/type
+  commands CI enforces, and what makes a good PR.
+- **Community standards:** [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) ·
+  [`SECURITY.md`](SECURITY.md) (how to report a vulnerability).
+- **Templates:** [issue templates](.github/ISSUE_TEMPLATE) and a
+  [pull-request template](.github/PULL_REQUEST_TEMPLATE.md) are provided.
+- **History:** see [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+
+Before opening a PR:
+
+```bash
+pytest -q && ruff check . && ruff format --check . && mypy stockpredictor
+```
+
 ## License
 
 Copyright © 2025–2026 Marshall Cahill
@@ -265,3 +320,6 @@ published by the Free Software Foundation. It is distributed in the hope that it
 will be useful, but **without any warranty**; without even the implied warranty of
 merchantability or fitness for a particular purpose. See the full license text in
 [LICENSE](LICENSE).
+
+If you reference this project in academic work, citation metadata is provided in
+[`CITATION.cff`](CITATION.cff).
