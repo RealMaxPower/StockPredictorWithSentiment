@@ -1,4 +1,4 @@
-matplotlib==3.10.5
+matplotlib==3.10.9
 newsapi-python==0.2.7
 pandas==2.3.3
 statsmodels==0.14.6
