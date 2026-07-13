@@ -7,7 +7,7 @@ name = "stockpredictor"
 version = "0.2.0"
 description = "Historical price forecasting with prediction intervals and news-sentiment context."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Marshall Cahill", email = "contactme@marshallcahill.com" }]
 keywords = ["stocks", "forecasting", "sentiment", "holt-winters", "newsapi"]
@@ -58,9 +58,9 @@ ignore = ["E501"]  # line length handled by the formatter
 "tests/**" = ["S101"]
 
 [tool.mypy]
-# Target 3.12: mypy >=1.19 dropped 3.9 as a check target, and numpy's stubs now
-# use PEP 695 `type` statements that mypy only accepts when targeting >=3.12.
-# Runtime 3.9 support is still verified by the pytest matrix in CI.
+# Target 3.12: numpy's stubs use PEP 695 `type` statements that mypy only
+# accepts when targeting >=3.12, so this sits above our 3.10 floor. Runtime
+# compatibility across 3.10-3.12 is verified by the pytest matrix in CI.
 python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = true
