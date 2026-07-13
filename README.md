@@ -5,7 +5,7 @@
 
 [![CI](https://github.com/RealMaxPower/StockPredictorWithSentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/RealMaxPower/StockPredictorWithSentiment/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
 [![Status](https://img.shields.io/badge/status-v0.2%20%C2%B7%20educational%20demo-orange.svg)](#)
 
 This tool forecasts the next 12 months of a stock's price from its history **with
@@ -21,7 +21,7 @@ question: *would trading on this forecast have made money after costs?* (Usually
 > uncertainty band seriously." This tool is for learning, not trading.
 
 **At a glance:** v0.2 · 16-module Python package · ~120 tests (network mocked) ·
-CI on 3.9 / 3.11 / 3.12 · CLI + Streamlit dashboard · forecasts run with **no API key**.
+CI on 3.10 / 3.11 / 3.12 · CLI + Streamlit dashboard · forecasts run with **no API key**.
 
 ---
 
@@ -262,7 +262,7 @@ ruff check . && ruff format --check .
 mypy stockpredictor
 ```
 
-CI runs lint + types + tests across Python 3.9/3.11/3.12, plus a `pip-audit` job.
+CI runs lint + types + tests across Python 3.10/3.11/3.12, plus a `pip-audit` job.
 
 `python3 update_readme_date.py` updates the example command's `--end` to the most
 recent Friday (hardened against a missing/unwritable README and silent no-ops).
