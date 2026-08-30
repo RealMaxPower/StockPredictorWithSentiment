@@ -36,7 +36,10 @@ htmlcov/
 
 # Secrets & local config
 .env
-.env.local
+.env.*
+!.env.example
+# app.py reads NEWSAPI_KEY from st.secrets; this file holds the real key.
+.streamlit/secrets.toml
 
 # Local data store / caches
 *.db
