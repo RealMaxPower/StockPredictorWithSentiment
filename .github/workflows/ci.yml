@@ -54,4 +54,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pip-audit
       - name: Audit dependencies
-        run: pip-audit --strict || true  # report, don't block on disputed advisories
+        # Audit the project's pinned runtime deps. Bare `pip-audit` scans the
+        # *current environment*, which here is just pip-audit's own install --
+        # so it never actually looked at our dependency tree.
+        run: pip-audit --strict -r requirements.txt
