@@ -1,6 +1,6 @@
 matplotlib==3.10.9
 newsapi-python==0.2.7
 pandas==2.3.3
-statsmodels==0.14.6
+statsmodels==0.15.0
 vaderSentiment==3.3.2
-yfinance==1.5.2
+yfinance==1.7.0
