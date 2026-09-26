@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Historical price forecasting with prediction intervals and news-sentiment context."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL-3.0-or-later" }
+license = "GPL-3.0-or-later"
 authors = [{ name = "Marshall Cahill", email = "contactme@marshallcahill.com" }]
 keywords = ["stocks", "forecasting", "sentiment", "holt-winters", "newsapi"]
 
