@@ -37,6 +37,8 @@ class Scorer(Protocol):
 class VaderScorer:
     """Default zero-dependency scorer wrapping vaderSentiment's analyzer."""
 
+    name = "vader"
+
     def __init__(self, analyzer=None) -> None:
         if analyzer is None:
             from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -56,8 +58,16 @@ class FinBertScorer:
     optional. Signed score = P(positive) - P(negative).
     """
 
+    name = "finbert"
+
     def __init__(self, model_name: str = "ProsusAI/finbert") -> None:
-        from transformers import pipeline  # imported lazily on purpose
+        try:
+            from transformers import pipeline  # imported lazily on purpose
+        except ImportError as exc:
+            raise ImportError(
+                "FinBERT scoring needs the optional 'finbert' extra (transformers + torch): "
+                "pip install -e '.[finbert]'"
+            ) from exc
 
         self._pipe = pipeline("text-classification", model=model_name, top_k=None)
 
@@ -68,11 +78,23 @@ class FinBertScorer:
         return float(scores.get("positive", 0.0) - scores.get("negative", 0.0))
 
 
+SCORERS = ("vader", "finbert")
+
+
 def get_scorer(model: str = "vader", analyzer=None) -> Scorer:
-    """Factory: select a scorer by name. Falls back to VADER on any failure."""
+    """
+    Factory: select a scorer by name.
+
+    Deliberately never substitutes one scorer for another. A silent fallback would
+    produce VADER scores for a run that asked for FinBERT, and nothing downstream
+    could tell them apart. So an unknown name raises ``ValueError`` and a missing
+    FinBERT extra raises ``ImportError`` with the install command.
+    """
     if model == "finbert":
         return FinBertScorer()
-    return VaderScorer(analyzer=analyzer)
+    if model == "vader":
+        return VaderScorer(analyzer=analyzer)
+    raise ValueError(f"Unknown sentiment model {model!r}; expected one of {SCORERS}")
 
 
 @dataclass(frozen=True)

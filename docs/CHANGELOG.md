@@ -11,8 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Empirical out-of-sample interval coverage (`coverage80` / `coverage95`) in the
   walk-forward backtest, reported in the CLI alongside the live forecast bands.
+- Run history records which sentiment scorer produced each run (`sentiment_model`
+  in the `runs` table). Existing databases gain the column automatically; their
+  earlier rows stay `NULL` because the scorer used for them is unknown.
+- CI tests the documented `pip install -r requirements.txt` path on every
+  supported Python, and runs the real FinBERT model so bumps to that extra are
+  verified.
 
 ### Changed
+
+- `--sentiment-model finbert` without the `finbert` extra now stops before any
+  ticker is processed, with the install command, instead of failing per ticker.
+  An unknown scorer name raises instead of silently scoring with VADER.
+- `requirements.txt` pins numpy per Python band (it was unpinned), since numpy 2.3+
+  dropped Python 3.10 and 2.5 needs 3.12.
 
 - Resample to the month-end close (configurable `monthly_agg`, default `"last"`)
   instead of the within-month average, which smoothed the series and inflated the
@@ -25,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interactive Plotly chart: the disclaimer no longer overlaps the date axis,
   prediction-band edges no longer render stray marker dots, and legend colors are
   pinned to match the static PNG.
+- FinBERT's model loads once per CLI run instead of once per ticker.
 
 ## [0.2.0]
 

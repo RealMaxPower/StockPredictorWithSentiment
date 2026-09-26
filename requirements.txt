@@ -1,5 +1,10 @@
 matplotlib==3.10.9
 newsapi-python==0.2.7
+# numpy needs one pin per Python band: 2.3+ dropped 3.10, and 2.5 requires 3.12
+# and trips timedelta deprecations inside pandas 2.3.3. CI installs this file on
+# every supported Python, so a bump that breaks a band fails there.
+numpy==2.2.6; python_version < "3.11"
+numpy==2.4.6; python_version >= "3.11"
 pandas==2.3.3
 statsmodels==0.15.0
 vaderSentiment==3.3.2

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from stockpredictor import cli, data
 
@@ -71,3 +72,32 @@ def test_cli_simulate_writes_scorecard_and_artifacts(
     files = os.listdir(tmp_path / subdirs[0])
     assert any(f.endswith("_SIM_equity.png") for f in files)
     assert any(f.endswith("_SIM_metrics.json") for f in files)
+
+
+def test_cli_finbert_without_extra_fails_before_any_ticker_work(tmp_path, monkeypatch):
+    # News is available, so a scorer is needed — but the FinBERT extra is missing.
+    monkeypatch.setattr(cli, "_make_news_client", lambda logger: object())
+    monkeypatch.setitem(sys.modules, "transformers", None)
+
+    def must_not_fetch(*args, **kwargs):
+        raise AssertionError("price data fetched before the scorer was validated")
+
+    monkeypatch.setattr(data, "_default_downloader", must_not_fetch)
+
+    code = cli.main(
+        [
+            "--tickers",
+            "NVDA,AAPL",
+            "--start",
+            "2015-01-01",
+            "--end",
+            "2024-12-31",
+            "--sentiment-model",
+            "finbert",
+            "--outdir",
+            str(tmp_path),
+            "--db",
+            str(tmp_path / "cli.db"),
+        ]
+    )
+    assert code == 2

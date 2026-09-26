@@ -7,7 +7,7 @@ import os
 import time
 from datetime import datetime
 
-from . import config, data, evaluation, forecast, pipeline
+from . import config, data, evaluation, forecast, pipeline, sentiment
 from .sanitize import sanitize_ticker
 
 
@@ -210,6 +210,17 @@ def main(argv: list | None = None) -> int:
     logger.info("Saving outputs to %s", out_dir)
     news_client = _make_news_client(logger)
 
+    # Build the scorer once, before any per-ticker work: a missing FinBERT extra
+    # fails fast with the install hint instead of once per ticker inside the loop,
+    # and FinBERT's model loads once rather than per ticker.
+    scorer = None
+    if news_client is not None:
+        try:
+            scorer = sentiment.get_scorer(cfg.sentiment_model)
+        except (ImportError, ValueError) as exc:
+            logger.error("%s", exc)
+            return 2
+
     # Optional SQLite store: read-through price cache + run history.
     store = None
     downloader = data._default_downloader
@@ -231,6 +242,7 @@ def main(argv: list | None = None) -> int:
                     cfg,
                     price_downloader=downloader,
                     news_client=news_client,
+                    scorer=scorer,
                     run_backtest=not args.no_backtest,
                     compare_models=args.compare_models,
                 )

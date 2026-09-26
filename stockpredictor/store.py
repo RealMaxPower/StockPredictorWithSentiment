@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS runs (
     ticker TEXT, run_date TEXT, start TEXT, "end" TEXT,
     horizon INTEGER, seasonal_used INTEGER,
     sentiment_mean REAL, sentiment_effective REAL, sentiment_n INTEGER,
-    sentiment_label TEXT, forecast_json TEXT, backtest_json TEXT
+    sentiment_label TEXT, forecast_json TEXT, backtest_json TEXT,
+    sentiment_model TEXT
 );
 CREATE TABLE IF NOT EXISTS articles (
     run_id INTEGER, ticker TEXT, url TEXT, title TEXT, source TEXT,
@@ -51,7 +52,15 @@ class Store:
         self.conn = sqlite3.connect(path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was created (additive only)."""
+        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(runs)")}
+        if "sentiment_model" not in cols:
+            # Pre-existing rows stay NULL: which scorer produced them is unknown.
+            self.conn.execute("ALTER TABLE runs ADD COLUMN sentiment_model TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -90,6 +99,7 @@ class Store:
                 column("Close"),
                 column("Volume"),
                 [fetched] * n,
+                strict=True,
             )
         )
         self.conn.executemany("INSERT OR REPLACE INTO prices VALUES (?,?,?,?,?,?,?,?)", rows)
@@ -130,7 +140,8 @@ class Store:
         cur = self.conn.execute(
             'INSERT INTO runs (ticker, run_date, start, "end", horizon, seasonal_used, '
             "sentiment_mean, sentiment_effective, sentiment_n, sentiment_label, "
-            "forecast_json, backtest_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "forecast_json, backtest_json, sentiment_model) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 result.ticker,
                 run_date,
@@ -146,6 +157,7 @@ class Store:
                     {k: payload[k] for k in ("forecast", "adjusted", "intervals", "horizon_index")}
                 ),
                 json.dumps(result.backtest),
+                getattr(result, "sentiment_model", None),
             ),
         )
         run_id = int(cur.lastrowid or 0)
@@ -170,7 +182,8 @@ class Store:
     def history(self, ticker: str) -> pd.DataFrame:
         return pd.read_sql_query(
             "SELECT run_date, sentiment_label, sentiment_mean, sentiment_effective, "
-            "sentiment_n, seasonal_used FROM runs WHERE ticker=? ORDER BY run_date",
+            "sentiment_n, sentiment_model, seasonal_used FROM runs WHERE ticker=? "
+            "ORDER BY run_date",
             self.conn,
             params=(ticker.upper(),),
         )

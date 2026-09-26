@@ -107,6 +107,8 @@ After `pip install -e .` the console entry point `stock-forecast ...` works too.
 
 Useful flags: `--no-sentiment`, `--sentiment-model {vader,finbert}`, `--no-backtest`,
 `--compare-models`, `--no-cache`, `--db PATH`, `--log-level {DEBUG,INFO,WARNING,ERROR}`.
+`--sentiment-model finbert` needs the `finbert` extra and exits with the install
+command if it's missing; it never falls back to VADER.
 Paper-trading simulation (see [below](#simulated-betting--position-sizing-paper-trading)):
 `--simulate`, `--sizing {vol,kelly}`, `--rf-rate`, `--commission-bps`, `--spread-bps`,
 `--slippage-bps`, `--target-vol`, `--kelly-fraction`, `--holdout`.
