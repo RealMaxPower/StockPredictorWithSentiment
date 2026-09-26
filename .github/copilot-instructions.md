@@ -69,7 +69,10 @@ the same way rather than hitting the network.
 - **Inject I/O.** Network clients (yfinance downloader, NewsAPI client, scorer) are passed in
   so logic stays unit-testable. Don't hardwire `yf.download` / `NewsApiClient` into logic.
 - **Keep VADER the zero-dependency default.** FinBERT (`transformers`/`torch`) and sklearn
-  (GBM) are optional extras, lazy-imported, and must degrade gracefully when absent.
+  (GBM) are optional extras, lazy-imported, and must never be needed by the default
+  path. But never substitute one sentiment scorer for another: an explicitly
+  requested FinBERT that can't load must fail with the install hint, because the run
+  would otherwise be recorded with VADER scores under a FinBERT request.
 - **Use `logging`, not `print`.** Never log the API key.
 - **Modernized typing** (`from __future__ import annotations`, PEP 585/604) — ruff enforces it.
 - Outputs per ticker land in `stock_plots/YYYY-MM-DD/`: `*_forecasts.png`, `*_forecast.html`,

@@ -36,3 +36,26 @@ def test_persist_outputs_writes_files(cfg, fake_downloader, fake_news_client, tm
     payload = json.loads(open(paths["metrics"]).read())
     assert set(payload["intervals"]) == {"80", "95"}
     assert "holt_winters" in payload["backtest"]
+
+
+def test_run_ticker_records_which_scorer_ran(cfg, fake_downloader, fake_news_client):
+    with_news = pipeline.run_ticker(
+        "NVDA", cfg, price_downloader=fake_downloader, news_client=fake_news_client()
+    )
+    assert with_news.sentiment_model == "vader"
+
+    no_news = pipeline.run_ticker("NVDA", cfg, price_downloader=fake_downloader)
+    assert no_news.sentiment_model is None  # nothing was scored
+
+    class Anonymous:
+        def score(self, text: str) -> float:
+            return 0.0
+
+    injected = pipeline.run_ticker(
+        "NVDA",
+        cfg,
+        price_downloader=fake_downloader,
+        news_client=fake_news_client(),
+        scorer=Anonymous(),
+    )
+    assert injected.sentiment_model is None  # unknown, so not guessed from cfg

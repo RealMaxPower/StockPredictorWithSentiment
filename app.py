@@ -283,7 +283,7 @@ def main() -> None:
     st.subheader("Comparison")
     st.dataframe(_comparison_table(results), use_container_width=True)
     labels = [_tab_label(tk) for tk in results]
-    for tab, tk in zip(st.tabs(labels), results):
+    for tab, tk in zip(st.tabs(labels), results, strict=True):
         with tab:
             res, cfg = results[tk]
             _render_result(tk, res, cfg, simulate=simulate, sizing=sizing)

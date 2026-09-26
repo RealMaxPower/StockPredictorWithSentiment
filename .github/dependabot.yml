@@ -14,6 +14,17 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "pip"
+    groups:
+      # Batch routine bumps into one PR: main's ruleset makes each PR rebase and
+      # re-run CI serially, so ungrouped updates cost a full cycle apiece. Major
+      # versions still arrive one per PR for individual review.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+        exclude-patterns:
+          # 0.x, so its "minor" bumps can change forecast numbers; always its own PR.
+          - "statsmodels"
 
   # GitHub Actions used in CI workflows.
   - package-ecosystem: "github-actions"
@@ -26,3 +37,8 @@ updates:
       - "ci"
     commit-message:
       prefix: "ci"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

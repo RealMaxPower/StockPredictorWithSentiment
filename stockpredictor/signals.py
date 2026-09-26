@@ -26,8 +26,8 @@ fits the forecast on that history; tests inject cheap synthetic signal functions
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import pandas as pd
 

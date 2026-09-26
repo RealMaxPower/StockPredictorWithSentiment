@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from stockpredictor import config, sentiment
 
@@ -73,3 +77,67 @@ def test_tilt_disabled_returns_unchanged():
     strong = sentiment.aggregate_sentiment([0.9] * 6)
     out = sentiment.apply_sentiment_tilt(forecast, strong, cfg)
     assert np.allclose(out.values, forecast.values)
+
+
+# --- scorer selection ---------------------------------------------------------
+def _fake_transformers(monkeypatch, output):
+    """Stand in for ``transformers`` so FinBERT's parsing is testable without torch."""
+    calls: dict = {"texts": []}
+
+    def pipeline(task, model, top_k):
+        calls.update(task=task, model=model, top_k=top_k)
+
+        def _pipe(text):
+            calls["texts"].append(text)
+            return output
+
+        return _pipe
+
+    module = types.ModuleType("transformers")
+    module.pipeline = pipeline
+    monkeypatch.setitem(sys.modules, "transformers", module)
+    return calls
+
+
+def test_get_scorer_vader_identifies_itself():
+    assert sentiment.get_scorer("vader").name == "vader"
+
+
+def test_get_scorer_rejects_unknown_name_instead_of_substituting_vader():
+    with pytest.raises(ValueError, match="finbret"):
+        sentiment.get_scorer("finbret")
+
+
+def test_finbert_without_extra_raises_install_hint(monkeypatch):
+    monkeypatch.setitem(sys.modules, "transformers", None)  # simulate "not installed"
+    with pytest.raises(ImportError, match=r"pip install -e '\.\[finbert\]'"):
+        sentiment.get_scorer("finbert")
+
+
+def test_finbert_score_is_positive_minus_negative(monkeypatch):
+    # Real pipelines return one list of {label, score} per input string; label case
+    # varies by model card, so parsing must be case-insensitive.
+    output = [
+        [
+            {"label": "Positive", "score": 0.80},
+            {"label": "negative", "score": 0.15},
+            {"label": "neutral", "score": 0.05},
+        ]
+    ]
+    calls = _fake_transformers(monkeypatch, output)
+    scorer = sentiment.get_scorer("finbert")
+    assert scorer.name == "finbert"
+    assert calls["task"] == "text-classification"
+    assert calls["model"] == "ProsusAI/finbert"
+    assert calls["top_k"] is None  # all three labels, not just the argmax
+    assert scorer.score("Company beats earnings") == pytest.approx(0.65)
+
+
+def test_finbert_skips_empty_text_and_truncates_long_text(monkeypatch):
+    output = [[{"label": "neutral", "score": 1.0}]]
+    calls = _fake_transformers(monkeypatch, output)
+    scorer = sentiment.get_scorer("finbert")
+    assert scorer.score("") == 0.0
+    assert calls["texts"] == []  # empty text never reaches the model
+    assert scorer.score("x" * 2000) == 0.0
+    assert len(calls["texts"][0]) == 512

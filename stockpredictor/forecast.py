@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -204,7 +204,7 @@ def directional_accuracy(y_true: np.ndarray, y_pred: np.ndarray, anchor: float) 
     """Fraction of steps where the predicted direction matches the actual one."""
     prev = anchor
     hits = 0
-    for t, p in zip(y_true, y_pred):
+    for t, p in zip(y_true, y_pred, strict=True):
         if np.sign(p - prev) == np.sign(t - prev):
             hits += 1
         prev = t

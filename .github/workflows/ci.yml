@@ -45,6 +45,65 @@ jobs:
       - name: Test
         run: pytest --cov=stockpredictor --cov-report=term-missing --cov-fail-under=75
 
+  # The documented `pip install -r requirements.txt` path. The job above installs
+  # the pyproject floors, which resolve to newer pandas/numpy, so without this job
+  # the exact versions the README hands users would never be tested.
+  test-pinned:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install pinned requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Test
+        # Not installed as a package, so `python -m` puts the repo on sys.path.
+        run: python -m pytest
+
+  # FinBERT is an opt-in extra (transformers + torch) that no other job installs.
+  # Runs the real model so bumps to that extra are verified rather than assumed.
+  finbert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STOCKPREDICTOR_LIVE_FINBERT: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Cache FinBERT weights
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-huggingface-finbert-v1
+
+      - name: Install (CPU-only torch)
+        # PyPI's default Linux torch wheel bundles CUDA libraries (several GB); the
+        # CPU build is a fraction of that and is all a text classifier needs.
+        run: |
+          python -m pip install --upgrade pip
+          pip install "torch>=2.14.0" --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[finbert]" pytest
+
+      - name: Live FinBERT test
+        run: python -m pytest tests/test_finbert_live.py -v
+
   audit:
     runs-on: ubuntu-latest
     steps:

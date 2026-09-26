@@ -33,6 +33,9 @@ class TickerResult:
     articles: list[dict[str, Any]] = field(default_factory=list)
     backtest: dict[str, dict[str, float]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # Which scorer produced ``sentiment`` ("vader"/"finbert"); None when no news was
+    # scored or an injected scorer doesn't identify itself. Persisted with the run.
+    sentiment_model: str | None = None
 
 
 def run_ticker(
@@ -62,11 +65,13 @@ def run_ticker(
         bt = forecast.backtest(monthly, cfg, models=bt_models)
 
     articles: list[dict[str, Any]] = []
+    sentiment_model: str | None = None
     if news_client is not None:
         articles = news.fetch_articles(news_client, ticker, end_date=cfg.end, cfg=cfg)
         scorer = scorer or sentiment.get_scorer(cfg.sentiment_model)
+        sentiment_model = getattr(scorer, "name", None)
         scores = sentiment.score_articles(articles, scorer)
-        for art, sc in zip(articles, scores):
+        for art, sc in zip(articles, scores, strict=True):
             art["sentiment"] = sc
         sent = sentiment.aggregate_sentiment(scores)
     else:
@@ -83,6 +88,7 @@ def run_ticker(
         articles=articles,
         backtest=bt,
         warnings=warns,
+        sentiment_model=sentiment_model,
     )
 
 
