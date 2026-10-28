@@ -19,6 +19,7 @@ import pandas as pd
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 from . import config
+from .data import validate_monthly
 
 logger = logging.getLogger("stockpredictor.forecast")
 
@@ -86,17 +87,22 @@ def forecast_with_intervals(
     ``horizon`` defaults to ``cfg.horizon``; the backtest passes a shorter horizon
     so it can measure empirical out-of-sample coverage of these same bands.
     """
+    cfg.validate()
     if len(monthly) < config.MIN_MONTHS_FOR_ANY_FIT:
         raise InsufficientDataError(
             f"need >= {config.MIN_MONTHS_FOR_ANY_FIT} monthly points, got {len(monthly)}"
         )
+    validate_monthly(monthly)
 
     h = cfg.horizon if horizon is None else horizon
+    if not isinstance(h, int) or isinstance(h, bool) or h <= 0:
+        raise ValueError("forecast horizon must be a positive integer")
     fit, seasonal, log_space = _fit_holt_winters(monthly, cfg)
     point = fit.forecast(h)
     if log_space:
         point = np.exp(point)
     point.index = _future_index(monthly.index, h)
+    _prediction_values(point, h)
 
     intervals: dict[int, tuple[pd.Series, pd.Series]] = {}
     try:
@@ -111,6 +117,8 @@ def forecast_with_intervals(
         sims = np.asarray(sims)  # shape (horizon, repetitions)
         if log_space:
             sims = np.exp(sims)  # back to price space -> bounds stay positive
+        if sims.shape != (h, _SIM_REPS) or not np.isfinite(sims).all():
+            raise ValueError("simulation returned invalid or nonfinite price paths")
         for alpha in config.INTERVAL_ALPHAS:
             coverage = int(round((1 - alpha) * 100))
             lower = np.quantile(sims, alpha / 2, axis=1)
@@ -150,18 +158,28 @@ def drift_forecast(train: pd.Series, horizon: int) -> pd.Series:
     return pd.Series([last + slope * (h + 1) for h in range(horizon)], index=idx)
 
 
-def holt_winters_model_fn(cfg: config.AppConfig) -> ModelFn:
-    """Adapt the Holt-Winters fit into a (train, horizon) -> point-series fn."""
+@dataclass(frozen=True)
+class _HoltWintersModel:
+    """Callable adapter whose intervals can reuse the same fit during evaluation."""
 
-    def _fn(train: pd.Series, horizon: int) -> pd.Series:
-        fit, _, log_space = _fit_holt_winters(train, cfg)
+    cfg: config.AppConfig
+
+    def __call__(self, train: pd.Series, horizon: int) -> pd.Series:
+        self.cfg.validate()
+        fit, _, log_space = _fit_holt_winters(train, self.cfg)
         out = fit.forecast(horizon)
         if log_space:
             out = np.exp(out)
         out.index = _future_index(train.index, horizon)
         return out
 
-    return _fn
+    def with_intervals(self, train: pd.Series, horizon: int) -> ForecastResult:
+        return forecast_with_intervals(train, self.cfg, horizon=horizon)
+
+
+def holt_winters_model_fn(cfg: config.AppConfig) -> ModelFn:
+    """Adapt the Holt-Winters fit into a (train, horizon) -> point-series fn."""
+    return _HoltWintersModel(cfg)
 
 
 def default_models(cfg: config.AppConfig) -> dict[str, ModelFn]:
@@ -175,6 +193,20 @@ def default_models(cfg: config.AppConfig) -> dict[str, ModelFn]:
 
 
 # --- Metrics -----------------------------------------------------------------
+def comparable_mase(*summaries: dict[str, float]) -> bool:
+    """Whether every model's MASE covers the same complete set of attempted folds."""
+    if not summaries:
+        return False
+    attempted = summaries[0].get("attempted_folds", 0)
+    return attempted > 0 and all(
+        summary.get("attempted_folds") == attempted
+        and summary.get("folds") == attempted
+        and summary.get("mase_folds") == attempted
+        and np.isfinite(summary.get("mase", float("nan")))
+        for summary in summaries
+    )
+
+
 def mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(np.abs(y_true - y_pred)))
 
@@ -223,6 +255,14 @@ def interval_coverage(y_true: np.ndarray, lower: np.ndarray, upper: np.ndarray) 
     return float(np.mean(inside))
 
 
+def _prediction_values(prediction: pd.Series, horizon: int) -> np.ndarray:
+    """Reject malformed predictions before they can enter evaluation metrics."""
+    values = prediction.to_numpy(dtype=float)
+    if values.shape != (horizon,) or not np.isfinite(values).all():
+        raise ValueError(f"expected {horizon} finite forecast values")
+    return values
+
+
 def backtest(
     monthly: pd.Series,
     cfg: config.AppConfig,
@@ -231,9 +271,13 @@ def backtest(
     """
     Rolling-origin (expanding-window) backtest. Slides the origin backward in
     ``backtest_horizon`` steps, fits each model on the prefix, scores the held-out
-    window, and averages metrics across folds. Returns {model: {metric: value}}.
+    window, and averages metrics across successful folds. ``folds`` reports actual
+    successes; ``attempted_folds`` and ``failed_folds`` expose missing evaluations.
+    Model selection must require complete, matching fold coverage.
     """
-    models = models or default_models(cfg)
+    cfg.validate()
+    validate_monthly(monthly)
+    models = default_models(cfg) if models is None else models
     n = len(monthly)
     h = cfg.backtest_horizon
     m = cfg.seasonal_periods
@@ -241,7 +285,9 @@ def backtest(
         name: {"mae": [], "rmse": [], "mape": [], "mase": [], "directional": []} for name in models
     }
     # Empirical out-of-sample coverage of the Holt-Winters prediction intervals.
-    coverage: dict[int, list[float]] = {80: [], 95: []}
+    coverage: dict[str, dict[int, list[float]]] = {
+        name: {80: [], 95: []} for name, fn in models.items() if isinstance(fn, _HoltWintersModel)
+    }
     folds_run = 0
     for k in range(cfg.backtest_folds):
         test_end = n - k * h
@@ -258,39 +304,46 @@ def backtest(
         train_arr = train.to_numpy()
         for name, fn in models.items():
             try:
-                pred = fn(train, len(test)).to_numpy()
+                interval_result = (
+                    fn.with_intervals(train, len(test))
+                    if isinstance(fn, _HoltWintersModel)
+                    else None
+                )
+                point = (
+                    interval_result.point if interval_result is not None else fn(train, len(test))
+                )
+                pred = _prediction_values(point, len(test))
+                if not point.index.equals(test.index):
+                    raise ValueError("forecast dates must match held-out month-end dates")
             except Exception as exc:  # noqa: BLE001 - skip a model that fails a fold
-                logger.debug("Model %s failed on fold %d: %s", name, k, exc)
+                logger.warning("Model %s failed on fold %d: %s", name, k + 1, exc)
                 continue
             per_model[name]["mae"].append(mae(y_true, pred))
             per_model[name]["rmse"].append(rmse(y_true, pred))
             per_model[name]["mape"].append(mape(y_true, pred))
             per_model[name]["mase"].append(mase(y_true, pred, train_arr, m))
             per_model[name]["directional"].append(directional_accuracy(y_true, pred, anchor))
-
-        # Score the interval bands the live forecast would have drawn on this fold.
-        try:
-            fc = forecast_with_intervals(train, cfg, horizon=len(test))
-            for cov, band in fc.intervals.items():
-                if cov in coverage:
+            # The point and interval metrics come from the same fitted model.
+            # An injected callable named "holt_winters" is never substituted with
+            # the built-in model, nor assigned another model's interval coverage.
+            if interval_result is not None:
+                for cov, band in interval_result.intervals.items():
+                    if cov not in coverage[name]:
+                        continue
                     lo, hi = band[0].to_numpy(), band[1].to_numpy()
-                    coverage[cov].append(interval_coverage(y_true, lo, hi))
-        except Exception as exc:  # noqa: BLE001 - coverage is best-effort
-            logger.debug("Interval coverage failed on fold %d: %s", k, exc)
+                    coverage[name][cov].append(interval_coverage(y_true, lo, hi))
 
     summary: dict[str, dict[str, float]] = {}
     for name, metrics in per_model.items():
         summary[name] = {
-            metric: (float(np.nanmean(vals)) if vals else float("nan"))
+            metric: (float(np.nanmean(vals)) if np.isfinite(vals).any() else float("nan"))
             for metric, vals in metrics.items()
         }
-        summary[name]["folds"] = float(folds_run)
-    # Coverage is a property of the interval-producing model (Holt-Winters).
-    if "holt_winters" in summary:
-        summary["holt_winters"]["coverage80"] = (
-            float(np.nanmean(coverage[80])) if coverage[80] else float("nan")
-        )
-        summary["holt_winters"]["coverage95"] = (
-            float(np.nanmean(coverage[95])) if coverage[95] else float("nan")
-        )
+        successes = len(metrics["mae"])
+        summary[name]["folds"] = float(successes)
+        summary[name]["attempted_folds"] = float(folds_run)
+        summary[name]["failed_folds"] = float(folds_run - successes)
+        summary[name]["mase_folds"] = float(np.isfinite(metrics["mase"]).sum())
+        for cov, values in coverage.get(name, {}).items():
+            summary[name][f"coverage{cov}"] = float(np.mean(values)) if values else float("nan")
     return summary

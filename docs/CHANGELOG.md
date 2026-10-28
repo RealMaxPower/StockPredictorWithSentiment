@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Cache hits require complete request coverage, preserve exclusive end dates and
+  adjustment mode, and expire historical snapshots after the TTL.
+- Historical news stays within its requested publication window; unavailable
+  windows return no news instead of falling back to current headlines.
+- Monthly inputs reject incomplete calendar periods, missing months, invalid
+  prices, and mismatched evaluation dates.
+- GBM volatility features exclude the target and update recursively. Backtests
+  report successful/failed folds and reuse one Holt-Winters fit per fold.
+- Runtime configuration rejects invalid dates, non-finite values, and limits.
+
 - Interactive Plotly chart: the disclaimer no longer overlaps the date axis,
   prediction-band edges no longer render stray marker dots, and legend colors are
   pinned to match the static PNG.

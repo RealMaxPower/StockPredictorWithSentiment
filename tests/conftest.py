@@ -34,10 +34,15 @@ def fake_downloader():
             + 10 * np.sin(2 * np.pi * np.arange(n) / 252)
             + np.random.default_rng(1).normal(0, 1.5, n)
         )
-        return pd.DataFrame(
+        frame = pd.DataFrame(
             {"Open": base, "High": base * 1.01, "Low": base * 0.99, "Close": base, "Volume": 1e6},
             index=days,
         )
+        if start:
+            frame = frame.loc[frame.index >= pd.Timestamp(start)]
+        if end:
+            frame = frame.loc[frame.index < pd.Timestamp(end)]
+        return frame
 
     return _dl
 
