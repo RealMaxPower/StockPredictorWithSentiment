@@ -144,6 +144,83 @@ def test_custom_costs_override_config(random_walk, cfg):
     assert res.trades["cost"].sum() == 0.0
 
 
+def test_rebalance_pays_for_actual_weight_drift():
+    prices = pd.Series(
+        [100.0, 100.0, 200.0, 200.0], index=pd.date_range("2020-01-31", periods=4, freq="ME")
+    )
+    cfg = config.AppConfig(rf_annual=0.0, commission_bps=100.0, spread_bps=0.0, slippage_bps=0.0)
+    result = simulate(prices, fixed_weight_fn(0.5), cfg, warmup=1)
+    entry = cfg.initial_capital * 0.5 / 1.005
+    equity_after_growth = 3.0 * entry
+    sale = (2.0 * entry - 0.5 * equity_after_growth) / 0.995
+    first, second = result.trades.iloc[0], result.trades.iloc[1]
+    assert first["notional"] == pytest.approx(entry)
+    assert first["cost"] == pytest.approx(entry * 0.01)
+    assert second["weight_before"] == pytest.approx(2.0 / 3.0)
+    assert second["weight_after"] == pytest.approx(0.5)
+    assert second["notional"] == pytest.approx(sale)
+    assert second["turnover"] == pytest.approx(sale / equity_after_growth)
+    assert second["cost"] == pytest.approx(sale * 0.01)
+    assert result.equity.iloc[-1] == pytest.approx(
+        (equity_after_growth - sale * 0.01) / cfg.initial_capital
+    )
+
+
+def test_fixed_fee_is_currency_and_curves_are_normalized():
+    prices = pd.Series([100.0] * 4, index=pd.date_range("2020-01-31", periods=4, freq="ME"))
+    cfg = config.AppConfig(
+        initial_capital=10000.0,
+        fixed_fee=1.0,
+        commission_bps=0.0,
+        spread_bps=0.0,
+        slippage_bps=0.0,
+        rf_annual=0.0,
+    )
+    result = simulate(prices, fixed_weight_fn(0.5), cfg, warmup=1)
+    assert result.trades["cost"].tolist() == pytest.approx([1.0, 0.0])
+    assert result.trades["notional"].iloc[0] == pytest.approx(4999.5)
+    assert result.trades["equity"].iloc[-1] == pytest.approx(9999.0)
+    assert result.equity.tolist() == pytest.approx([1.0, 0.9999, 0.9999])
+
+
+def test_unaffordable_trade_is_rejected_without_spending_cash():
+    prices = pd.Series(
+        [100.0, 100.0, 110.0, 90.0], index=pd.date_range("2020-01-31", periods=4, freq="ME")
+    )
+    cfg = config.AppConfig(initial_capital=100.0, fixed_fee=100.0, rf_annual=0.0)
+    result = simulate(prices, fixed_weight_fn(0.5), cfg, warmup=1)
+    assert result.equity.tolist() == pytest.approx([1.0] * 3)
+    assert result.benchmark_bh.tolist() == pytest.approx([1.0] * 3)
+    assert result.trades["cost"].sum() == 0
+    assert result.trades["rejected"].sum() == 2
+    assert any("unaffordable" in note for note in result.notes)
+
+
+def test_fully_invested_with_fixed_fees_matches_buy_and_hold(random_walk):
+    cfg = config.AppConfig(initial_capital=5000.0, fixed_fee=3.0)
+    result = simulate(random_walk, fixed_weight_fn(1.0), cfg)
+    assert np.allclose(result.equity, result.benchmark_bh)
+    assert (result.trades["cost"] > 0).sum() == 1
+
+
+@pytest.mark.parametrize("bad_price", [0.0, -1.0, np.inf, np.nan])
+def test_simulator_rejects_invalid_price_before_trading(random_walk, cfg, bad_price):
+    prices = random_walk.copy()
+    prices.iloc[10] = bad_price
+    with pytest.raises(ValueError, match="finite and positive"):
+        simulate(prices, fixed_weight_fn(0.5), cfg)
+
+
+def test_simulator_rejects_missing_months(random_walk, cfg):
+    with pytest.raises(ValueError, match="consecutive month-end"):
+        simulate(random_walk.drop(random_walk.index[20]), fixed_weight_fn(0.5), cfg)
+
+
+def test_simulator_rejects_nonfinite_strategy_weight(random_walk, cfg):
+    with pytest.raises(ValueError, match="weight must be finite"):
+        simulate(random_walk, fixed_weight_fn(np.nan), cfg)
+
+
 def test_equity_plot_renders(random_walk, cfg, tmp_path):
     """The strategy-vs-BH-vs-RF overlay PNG renders to a non-empty file."""
     from stockpredictor import plotting

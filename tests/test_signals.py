@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -45,11 +47,11 @@ def test_sigma_falls_back_to_95_band_when_80_absent():
     assert sig.uncertainty == pytest.approx(expected)
 
 
-def test_sigma_floor_when_no_intervals():
+def test_missing_intervals_make_signal_unavailable():
     idx = pd.date_range("2025-01-31", periods=1, freq="ME")
     fc = ForecastResult(point=pd.Series([110.0], index=idx), intervals={})
-    sig = signal_from_forecast(fc, last_price=100.0)
-    assert sig.uncertainty == pytest.approx(signals._MIN_SIGMA)
+    with pytest.raises(signals.UnavailableSignalError, match="uncertainty is unavailable"):
+        signal_from_forecast(fc, last_price=100.0)
 
 
 def test_confidence_comes_from_sentiment_else_zero():
@@ -76,3 +78,71 @@ def test_make_signal_fn_runs_real_forecast(monthly, cfg):
     assert sig.uncertainty > 0.0
     assert sig.as_of == monthly.index[-1]
     assert np.isfinite(sig.expected_return)
+
+
+@pytest.mark.parametrize(
+    "bounds", [(110, 100), (100, 100), (np.nan, 110), (100, np.inf), (-10, 110)]
+)
+def test_invalid_interval_is_unavailable(bounds):
+    fc = _forecast(105.0, *bounds)
+    with pytest.raises(signals.UnavailableSignalError):
+        signal_from_forecast(fc, last_price=100.0)
+
+
+@pytest.mark.parametrize("field", ["expected_return", "uncertainty", "confidence"])
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_signal_rejects_nonfinite_fields(field, value):
+    values = {
+        "expected_return": 0.01,
+        "uncertainty": 0.1,
+        "confidence": 0.5,
+        "as_of": pd.Timestamp("2025-01-31"),
+    }
+    values[field] = value
+    with pytest.raises(ValueError):
+        Signal(**values)
+
+
+def test_signal_cache_reuses_forecasts_across_sizing_but_not_data_or_model_changes(
+    monthly, cfg, monkeypatch
+):
+    signals.clear_signal_cache()
+    calls = []
+
+    def predict(history, settings, horizon):
+        calls.append((len(history), settings.min_months_seasonal))
+        return _forecast(110, 100, 120)
+
+    monkeypatch.setattr(signals.forecast, "forecast_with_intervals", predict)
+    fn = signals.make_signal_fn(cfg)
+    original = fn(monthly, cfg)
+    assert fn(monthly, replace(cfg, sizing_method="kelly", commission_bps=50)) == original
+    assert len(calls) == 1
+    fn(monthly, replace(cfg, min_months_seasonal=36))
+    changed = monthly.copy()
+    changed.iloc[-1] += 1
+    fn(changed, cfg)
+    assert len(calls) == 3
+    monkeypatch.setattr(
+        signals.forecast, "forecast_with_intervals", lambda *args, **kw: _forecast(115, 100, 120)
+    )
+    assert fn(monthly, cfg).expected_return != original.expected_return
+
+
+def test_unavailable_signal_is_not_cached(monthly, cfg, monkeypatch):
+    signals.clear_signal_cache()
+    calls = []
+
+    def predict(*args, **kwargs):
+        calls.append(1)
+        result = _forecast(110, 100, 120)
+        if len(calls) == 1:
+            result.intervals = {}
+        return result
+
+    monkeypatch.setattr(signals.forecast, "forecast_with_intervals", predict)
+    fn = signals.make_signal_fn(cfg)
+    with pytest.raises(signals.UnavailableSignalError):
+        fn(monthly, cfg)
+    assert fn(monthly, cfg).uncertainty > 0
+    assert len(calls) == 2

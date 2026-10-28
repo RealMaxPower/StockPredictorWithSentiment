@@ -21,6 +21,7 @@ turnover, which is what makes the cost-monotonicity guarantee hold.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -44,8 +45,8 @@ class TradingCosts:
     def __post_init__(self) -> None:
         for name in ("commission_bps", "spread_bps", "slippage_bps", "fixed_fee"):
             value = getattr(self, name)
-            if value < 0:
-                raise ValueError(f"{name} must be non-negative, got {value}")
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and non-negative, got {value}")
 
     @property
     def per_notional_bps(self) -> float:
@@ -71,6 +72,8 @@ def apply_costs(trade_notional: float, costs: TradingCosts) -> float:
     non-negative and monotonically increasing in ``|trade_notional|``.
     """
     notional = abs(float(trade_notional))
+    if not math.isfinite(notional):
+        raise ValueError("trade notional must be finite")
     if notional == 0.0:
         return 0.0
     return notional * costs.per_notional_bps / 1e4 + costs.fixed_fee

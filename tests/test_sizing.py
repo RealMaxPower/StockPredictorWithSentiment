@@ -59,6 +59,15 @@ def test_kelly_sigma_underflow_is_capped_not_divide_by_zero():
     assert sizing.kelly_weight(_sig(mu=0.05, sigma=1e-200), cfg) == cfg.max_weight
 
 
+def test_zero_kelly_fraction_remains_cash_even_with_underflow():
+    cfg = config.AppConfig(kelly_fraction=0.0)
+    assert sizing.kelly_weight(_sig(mu=0.05, sigma=1e-200), cfg) == 0.0
+
+
+def test_large_finite_uncertainty_does_not_overflow():
+    assert sizing.kelly_weight(_sig(mu=0.05, sigma=1e300), config.AppConfig()) == 0.0
+
+
 # --- Shared long-only / excess guards ----------------------------------------
 @pytest.mark.parametrize("method", [sizing.vol_target_weight, sizing.kelly_weight])
 def test_non_positive_return_gives_zero(method):

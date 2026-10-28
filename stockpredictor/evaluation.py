@@ -203,13 +203,13 @@ def format_scorecard(
     card: Scorecard,
     *,
     ticker: str = "",
-    variants_tried: int = 1,
+    variants_tried: int | None = None,
     holdout: Scorecard | None = None,
 ) -> str:
     """Render the plain-language scorecard block (execution brief §6).
 
-    ``variants_tried`` and the once-touched ``holdout`` slice surface the
-    multiple-testing discipline: the best of N variants is likely overfit.
+    ``holdout`` is a compatibility name for the final-period slice. It is shown
+    on every run and is not an independent, untouched validation set.
     """
     head = f"SCORECARD — {ticker}".rstrip(" —") if ticker else "SCORECARD"
     lines = [
@@ -227,18 +227,19 @@ def format_scorecard(
         f"  Strategy CAGR:       {_pct(card.strategy.cagr)}  | Sharpe {card.strategy.sharpe:+.2f}",
         f"  Max drawdown:        {_pct(card.max_drawdown)}",
         f"  Turnover (ann.):     {card.turnover_annual:.1f}x",
-        f"  Variants tried:      {variants_tried}"
+        f"  Variants tried:      {variants_tried if variants_tried is not None else 'untracked'}"
         + (
-            "   ⚠ best-of-N is likely overfit; see held-out result below"
-            if variants_tried > 1
+            "   ⚠ best-of-N is likely overfit"
+            if variants_tried is not None and variants_tried > 1
             else ""
         ),
     ]
     if holdout is not None:
         lines.append(
-            f"  Held-out period:     beat BH={_yn(holdout.beat_buy_and_hold)}, "
+            f"  Final-period performance: beat BH={_yn(holdout.beat_buy_and_hold)}, "
             f"beat RF={_yn(holdout.beat_risk_free)}, "
-            f"CAGR {_pct(holdout.strategy.cagr)} over {holdout.n_periods} mo (touched once)"
+            f"CAGR {_pct(holdout.strategy.cagr)} over {holdout.n_periods} mo "
+            "(included in full-period results; not an untouched holdout)"
         )
     lines.append(f"  ⚠ {card.disclaimer}")
     return "\n".join(lines)

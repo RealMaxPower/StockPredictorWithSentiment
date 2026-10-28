@@ -10,15 +10,17 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import pandas as pd
 
 from . import config, data, evaluation, forecast, news, portfolio, sentiment, strategy
 from .forecast import ForecastResult
+from .reproducibility import code_version, data_fingerprint
 from .sanitize import sanitize_ticker
 from .sentiment import Scorer, SentimentResult
+from .serialization import json_safe
 
 logger = logging.getLogger("stockpredictor.pipeline")
 
@@ -36,6 +38,9 @@ class TickerResult:
     # Which scorer produced ``sentiment`` ("vader"/"finbert"); None when no news was
     # scored or an injected scorer doesn't identify itself. Persisted with the run.
     sentiment_model: str | None = None
+    configuration: dict[str, Any] = field(default_factory=dict)
+    data_fingerprint: str = ""
+    code_version: str = ""
 
 
 def run_ticker(
@@ -50,9 +55,10 @@ def run_ticker(
 ) -> TickerResult:
     """Fetch, forecast (with intervals + backtest), score news, and apply the tilt."""
     # Validate before the symbol becomes a file name in persist_outputs/plotting.
+    cfg.validate()
     ticker = sanitize_ticker(ticker)
     df = data.fetch_prices(ticker, cfg.start, cfg.end, downloader=price_downloader)
-    monthly, warns = data.to_monthly(df, ticker, agg=cfg.monthly_agg)
+    monthly, warns = data.to_monthly(df, ticker, agg=cfg.monthly_agg, end=cfg.end or None)
 
     fcast = forecast.forecast_with_intervals(monthly, cfg)
     bt = {}
@@ -89,6 +95,9 @@ def run_ticker(
         backtest=bt,
         warnings=warns,
         sentiment_model=sentiment_model,
+        configuration=asdict(cfg),
+        data_fingerprint=data_fingerprint(monthly),
+        code_version=code_version(),
     )
 
 
@@ -109,8 +118,16 @@ class SimulationReport:
     scorecard: evaluation.Scorecard
     holdout: evaluation.Scorecard | None
     variant_id: str
-    variants_tried: int
+    variants_tried: int | None
     warnings: list[str] = field(default_factory=list)
+    configuration: dict[str, Any] = field(default_factory=dict)
+    data_fingerprint: str = ""
+    code_version: str = ""
+
+    @property
+    def final_period(self) -> evaluation.Scorecard | None:
+        """Descriptive tail performance; ``holdout`` remains a compatibility alias."""
+        return self.holdout
 
 
 def _holdout_scorecard(
@@ -118,9 +135,8 @@ def _holdout_scorecard(
 ) -> evaluation.Scorecard | None:
     """Scorecard on just the final ``cfg.holdout_periods`` of the (single) OOS run.
 
-    The whole curve is already out-of-sample by walk-forward construction; this tail
-    slice is the once-touched final period the brief asks for (§3.5). Returns None if
-    the curve is too short to carve out a meaningful slice.
+    The tail is also included in the full scorecard. It is descriptive and repeatedly
+    visible, not an independent or protected holdout. Returns None if too short.
     """
     h = cfg.holdout_periods
     if len(sim.equity) < h + 2:
@@ -148,11 +164,12 @@ def run_simulation(
     plus the held-out slice. When a ``store`` is given, the run is logged and the
     variant count is read back for the multiple-testing warning.
     """
+    cfg.validate()
     ticker = sanitize_ticker(ticker)
     warns: list[str] = []
     if monthly is None:
         df = data.fetch_prices(ticker, cfg.start, cfg.end, downloader=price_downloader)
-        monthly, warns = data.to_monthly(df, ticker, agg=cfg.monthly_agg)
+        monthly, warns = data.to_monthly(df, ticker, agg=cfg.monthly_agg, end=cfg.end or None)
 
     weight_fn = strategy.build_weight_fn(cfg)
     sim = portfolio.simulate(monthly, weight_fn, cfg)
@@ -164,52 +181,81 @@ def run_simulation(
         rf_annual=cfg.rf_annual,
     )
     holdout = _holdout_scorecard(sim, cfg)
-    vid = strategy.variant_id(cfg)
-
-    variants_tried = 1
-    if store is not None:
-        try:
-            store.save_simulation(ticker, vid, card, cfg)
-            variants_tried = store.count_simulations(ticker)
-        except Exception as exc:  # noqa: BLE001 - persistence must never break a run
-            logger.warning("%s: could not log simulation: %s", ticker, exc)
-
-    return SimulationReport(
+    fingerprint = data_fingerprint(monthly)
+    version = code_version()
+    vid = strategy.variant_id(cfg, data_fingerprint=fingerprint, code_version=version)
+    report = SimulationReport(
         ticker=ticker,
         monthly=monthly,
         result=sim,
         scorecard=card,
         holdout=holdout,
         variant_id=vid,
-        variants_tried=variants_tried,
-        warnings=warns,
+        variants_tried=None,
+        warnings=warns + sim.notes,
+        configuration=asdict(cfg),
+        data_fingerprint=fingerprint,
+        code_version=version,
     )
+    if store is not None:
+        record_simulation(report, cfg, store)
+    return report
+
+
+def record_simulation(report: SimulationReport, cfg: config.AppConfig, store: Any) -> None:
+    """Record an experiment outside computation caches; failures remain visible."""
+    try:
+        store.save_simulation(
+            report.ticker,
+            report.variant_id,
+            report.scorecard,
+            cfg,
+            configuration=report.configuration,
+            data_fingerprint=report.data_fingerprint,
+            code_version=report.code_version,
+        )
+        report.variants_tried = store.count_simulations(report.ticker)
+    except Exception as exc:  # noqa: BLE001 - an optional store must not discard results
+        warning = f"Experiment history unavailable: {exc}"
+        report.warnings.append(warning)
+        logger.warning("%s: %s", report.ticker, warning)
 
 
 def simulation_payload(report: SimulationReport, cfg: config.AppConfig) -> dict[str, Any]:
     """Serializable SIM_metrics: scorecard + cost assumptions + variant id + RF rate."""
     sim = report.result
-    return {
-        "ticker": report.ticker,
-        "variant_id": report.variant_id,
-        "variants_tried": report.variants_tried,
-        "rf_annual": cfg.rf_annual,
-        "sizing_method": cfg.sizing_method,
-        "costs_bps": {
-            "commission": cfg.commission_bps,
-            "spread": cfg.spread_bps,
-            "slippage": cfg.slippage_bps,
+    return json_safe(
+        {
+            "ticker": report.ticker,
+            "configuration": report.configuration,
+            "data_fingerprint": report.data_fingerprint,
+            "code_version": report.code_version,
+            "variant_id": report.variant_id,
+            "variants_tried": report.variants_tried,
+            "rf_annual": cfg.rf_annual,
+            "sizing_method": cfg.sizing_method,
+            "costs_bps": {
+                "commission": cfg.commission_bps,
+                "spread": cfg.spread_bps,
+                "slippage": cfg.slippage_bps,
+            },
             "fixed_fee": cfg.fixed_fee,
-        },
-        "scorecard": report.scorecard.as_dict(),
-        "holdout": report.holdout.as_dict() if report.holdout is not None else None,
-        "equity_index": [d.strftime("%Y-%m-%d") for d in sim.equity.index],
-        "equity": [round(v, 6) for v in sim.equity.tolist()],
-        "benchmark_bh": [round(v, 6) for v in sim.benchmark_bh.tolist()],
-        "benchmark_rf": [round(v, 6) for v in sim.benchmark_rf.tolist()],
-        "data_quality_warnings": report.warnings,
-        "disclaimer": config.DISCLAIMER,
-    }
+            "initial_capital": cfg.initial_capital,
+            "scorecard": report.scorecard.as_dict(),
+            "final_period": report.final_period.as_dict()
+            if report.final_period is not None
+            else None,
+            "final_period_note": "Included in the full scorecard; not an independent holdout.",
+            # Compatibility for existing JSON consumers; semantics documented above.
+            "holdout": report.holdout.as_dict() if report.holdout is not None else None,
+            "equity_index": [d.strftime("%Y-%m-%d") for d in sim.equity.index],
+            "equity": [round(v, 6) for v in sim.equity.tolist()],
+            "benchmark_bh": [round(v, 6) for v in sim.benchmark_bh.tolist()],
+            "benchmark_rf": [round(v, 6) for v in sim.benchmark_rf.tolist()],
+            "data_quality_warnings": report.warnings,
+            "disclaimer": config.DISCLAIMER,
+        }
+    )
 
 
 def persist_simulation_outputs(
@@ -224,7 +270,7 @@ def persist_simulation_outputs(
     metrics_path = os.path.join(out_dir, f"{report.ticker}_SIM_metrics.json")
     try:
         with open(metrics_path, "w", encoding="utf-8") as fh:
-            json.dump(simulation_payload(report, cfg), fh, indent=2)
+            json.dump(simulation_payload(report, cfg), fh, indent=2, allow_nan=False)
         paths["sim_metrics"] = metrics_path
     except OSError as exc:
         logger.error("%s: could not write SIM metrics JSON: %s", report.ticker, exc)
@@ -250,24 +296,30 @@ def _interval_dict(fc: ForecastResult) -> dict[str, Any]:
 def metrics_payload(result: TickerResult) -> dict[str, Any]:
     """Serializable summary: backtest, sentiment, and the forecast with intervals."""
     fc = result.forecast
-    return {
-        "ticker": result.ticker,
-        "horizon_index": [d.strftime("%Y-%m-%d") for d in fc.point.index],
-        "forecast": fc.point.round(4).tolist(),
-        "adjusted": result.adjusted.round(4).tolist(),
-        "intervals": _interval_dict(fc),
-        "seasonal_used": fc.seasonal_used,
-        "backtest": result.backtest,
-        "sentiment": {
-            "mean": round(result.sentiment.mean, 4),
-            "effective": round(result.sentiment.effective, 4),
-            "n_articles": result.sentiment.n_articles,
-            "dispersion": round(result.sentiment.dispersion, 4),
-            "confidence": round(result.sentiment.confidence, 4),
-            "label": result.sentiment.label(),
-        },
-        "data_quality_warnings": result.warnings,
-    }
+    return json_safe(
+        {
+            "ticker": result.ticker,
+            "configuration": result.configuration,
+            "data_fingerprint": result.data_fingerprint,
+            "code_version": result.code_version,
+            "sentiment_model": result.sentiment_model,
+            "horizon_index": [d.strftime("%Y-%m-%d") for d in fc.point.index],
+            "forecast": fc.point.round(4).tolist(),
+            "adjusted": result.adjusted.round(4).tolist(),
+            "intervals": _interval_dict(fc),
+            "seasonal_used": fc.seasonal_used,
+            "backtest": result.backtest,
+            "sentiment": {
+                "mean": round(result.sentiment.mean, 4),
+                "effective": round(result.sentiment.effective, 4),
+                "n_articles": result.sentiment.n_articles,
+                "dispersion": round(result.sentiment.dispersion, 4),
+                "confidence": round(result.sentiment.confidence, 4),
+                "label": result.sentiment.label(),
+            },
+            "data_quality_warnings": result.warnings,
+        }
+    )
 
 
 def persist_outputs(result: TickerResult, out_dir: str, cfg: config.AppConfig) -> dict[str, str]:
@@ -280,7 +332,7 @@ def persist_outputs(result: TickerResult, out_dir: str, cfg: config.AppConfig) -
     news_path = os.path.join(out_dir, f"{result.ticker}_news.json")
     try:
         with open(news_path, "w", encoding="utf-8") as fh:
-            json.dump(result.articles, fh, indent=2)
+            json.dump(json_safe(result.articles), fh, indent=2, allow_nan=False)
         paths["news"] = news_path
     except OSError as exc:
         logger.error("%s: could not write news JSON: %s", result.ticker, exc)
@@ -288,7 +340,7 @@ def persist_outputs(result: TickerResult, out_dir: str, cfg: config.AppConfig) -
     metrics_path = os.path.join(out_dir, f"{result.ticker}_metrics.json")
     try:
         with open(metrics_path, "w", encoding="utf-8") as fh:
-            json.dump(metrics_payload(result), fh, indent=2)
+            json.dump(metrics_payload(result), fh, indent=2, allow_nan=False)
         paths["metrics"] = metrics_path
     except OSError as exc:
         logger.error("%s: could not write metrics JSON: %s", result.ticker, exc)

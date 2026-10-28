@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Simulated rebalances account for drifted holdings and self-financing fees;
+  fixed fees use explicit starting capital and unaffordable trades are rejected.
+- Missing prediction intervals target cash instead of maximal exposure. Signals
+  are reused across sizing/cost variants without changing point-in-time inputs.
+- Simulation identities include configuration, data, and code; repeated runs do
+  not inflate variant counts. Untracked history is explicitly unknown.
+- Final-period performance replaces the unsupported untouched-holdout claim.
+- Forecast/simulation JSON records reproducibility metadata and writes null for
+  undefined metrics instead of non-standard NaN/Infinity values.
+
 - Cache hits require complete request coverage, preserve exclusive end dates and
   adjustment mode, and expire historical snapshots after the TTL.
 - Historical news stays within its requested publication window; unavailable

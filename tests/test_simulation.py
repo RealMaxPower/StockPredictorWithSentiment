@@ -28,7 +28,7 @@ def test_run_simulation_produces_scorecard_and_holdout(seasonal_monthly, cfg):
     assert report.scorecard.n_periods > 0
     assert isinstance(report.scorecard.beat_buy_and_hold, bool)
     assert report.holdout is not None  # 120 months > holdout + 2
-    assert report.variants_tried == 1  # no store -> single run
+    assert report.variants_tried is None  # no store -> experiment history unknown
 
 
 def test_run_simulation_short_series_has_no_holdout(cfg):
@@ -57,7 +57,7 @@ def test_variant_count_increments_in_store(seasonal_monthly, tmp_path):
 def test_simulation_payload_is_serializable_with_disclaimer(seasonal_monthly, cfg):
     report = pipeline.run_simulation("NVDA", cfg, monthly=seasonal_monthly)
     payload = pipeline.simulation_payload(report, cfg)
-    json.dumps(payload)  # must be JSON-serializable (raises otherwise)
+    json.dumps(payload, allow_nan=False)
     assert payload["disclaimer"] == config.DISCLAIMER
     assert "scorecard" in payload and "beat_buy_and_hold" in payload["scorecard"]
     assert payload["costs_bps"]["commission"] == cfg.commission_bps
@@ -71,3 +71,23 @@ def test_persist_simulation_writes_artifacts(seasonal_monthly, cfg, tmp_path):
     payload = json.loads(open(paths["sim_metrics"]).read())
     assert payload["ticker"] == "NVDA"
     assert "gross" not in json.dumps(payload).lower()  # no gross-of-cost headline
+
+
+def test_repeated_simulation_is_one_variant_with_reproducible_metadata(seasonal_monthly, tmp_path):
+    cfg = config.AppConfig()
+    with Store(str(tmp_path / "identity.db")) as store:
+        first = pipeline.run_simulation("AAPL", cfg, monthly=seasonal_monthly, store=store)
+        second = pipeline.run_simulation("AAPL", cfg, monthly=seasonal_monthly, store=store)
+        assert first.variant_id == second.variant_id
+        assert second.variants_tried == 1
+        assert store.count_simulation_runs("AAPL") == 2
+        payload = pipeline.simulation_payload(second, cfg)
+        assert payload["final_period"] == payload["holdout"]
+        assert "not an independent holdout" in payload["final_period_note"]
+        assert payload["configuration"]["initial_capital"] == cfg.initial_capital
+        assert payload["data_fingerprint"] == second.data_fingerprint
+        changed = seasonal_monthly.copy()
+        changed.iloc[-1] *= 1.01
+        third = pipeline.run_simulation("AAPL", cfg, monthly=changed, store=store)
+        assert third.variant_id != first.variant_id
+        assert third.variants_tried == 2

@@ -67,9 +67,11 @@ def kelly_weight(signal: Signal, cfg: config.AppConfig) -> float:
     ``max_weight`` rather than dividing by zero.
     """
     excess = _excess_return(signal, cfg)
-    if excess <= 0.0:
+    if excess <= 0.0 or cfg.kelly_fraction == 0.0:
         return 0.0
-    sigma2 = signal.uncertainty**2
+    # Multiplication yields inf (and hence zero size) for huge finite sigma,
+    # unlike exponentiation, which can raise OverflowError.
+    sigma2 = signal.uncertainty * signal.uncertainty
     if sigma2 == 0.0:  # underflow guard: σ² rounded to 0 -> cap, don't divide
         return cfg.max_weight
     raw = cfg.kelly_fraction * excess / sigma2

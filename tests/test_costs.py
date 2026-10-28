@@ -44,3 +44,11 @@ def test_from_config_reads_cfg(cfg):
     assert c.commission_bps == cfg.commission_bps
     assert c.spread_bps == cfg.spread_bps
     assert c.slippage_bps == cfg.slippage_bps
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_costs_reject_nonfinite_inputs(value):
+    with pytest.raises(ValueError, match="finite"):
+        TradingCosts(fixed_fee=value)
+    with pytest.raises(ValueError, match="finite"):
+        apply_costs(value, TradingCosts())

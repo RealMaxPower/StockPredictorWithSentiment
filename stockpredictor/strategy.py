@@ -21,14 +21,18 @@ variant can be logged and counted — the multiple-testing discipline of brief �
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import math
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from . import config
-from .signals import Signal, SignalFn
+from .signals import Signal, SignalFn, UnavailableSignalError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .portfolio import WeightFn
@@ -71,13 +75,19 @@ def make_weight_fn(
     """
 
     def _fn(history: pd.Series, cfg: config.AppConfig) -> float:
-        signal = signal_fn(history, cfg)
+        try:
+            signal = signal_fn(history, cfg)
+        except UnavailableSignalError as exc:
+            logger.warning("Signal unavailable at %s; targeting cash: %s", history.index[-1], exc)
+            return 0.0
         conviction = target_weight(signal, cfg)
         if conviction <= 0.0:
             return 0.0
         if sizing_fn is None:
             return conviction
         fraction = sizing_fn(signal, cfg)
+        if not math.isfinite(fraction):
+            raise ValueError("position sizing must return a finite weight")
         return float(min(max(fraction, 0.0), cfg.max_weight))
 
     return _fn
@@ -102,21 +112,45 @@ def build_weight_fn(
     return make_weight_fn(signal_fn, sizing_fn=sizing.size_position)
 
 
-def variant_id(cfg: config.AppConfig) -> str:
-    """A readable, deterministic identity for the full strategy/cost configuration.
-
-    Logged with every simulation run so the reporting layer can count how many
-    variants were tried and warn that the best of N is likely overfit (brief §3.5).
-    """
-    return ";".join(
-        (
-            f"sizing={cfg.sizing_method}",
-            f"floor={cfg.confidence_floor:g}",
-            f"minexc={cfg.min_excess_return:g}",
-            f"maxw={cfg.max_weight:g}",
-            f"tvol={cfg.target_vol:g}",
-            f"kelly={cfg.kelly_fraction:g}",
-            f"cost={cfg.commission_bps:g}/{cfg.spread_bps:g}/{cfg.slippage_bps:g}",
-            f"rf={cfg.rf_annual:g}",
-        )
+def variant_config(cfg: config.AppConfig) -> dict[str, object]:
+    """Canonical simulation settings, excluding presentation and news options."""
+    fields = (
+        "start",
+        "end",
+        "monthly_agg",
+        "seasonal_periods",
+        "min_months_seasonal",
+        "commission_bps",
+        "spread_bps",
+        "slippage_bps",
+        "fixed_fee",
+        "initial_capital",
+        "rf_annual",
+        "max_weight",
+        "target_vol",
+        "kelly_fraction",
+        "confidence_floor",
+        "min_excess_return",
+        "sizing_method",
+        "holdout_periods",
     )
+    cfg_dict = asdict(cfg)
+    return {
+        **{name: cfg_dict[name] for name in fields},
+        "warmup_months": config.SIM_WARMUP_MONTHS,
+        "periods_per_year": config.PERIODS_PER_YEAR,
+    }
+
+
+def variant_id(
+    cfg: config.AppConfig, *, data_fingerprint: str | None = None, code_version: str | None = None
+) -> str:
+    """Stable experiment identity including settings and optional data/code identity."""
+    payload = {
+        "schema": 2,
+        "configuration": variant_config(cfg),
+        "data_fingerprint": data_fingerprint,
+        "code_version": code_version,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return "sim-v2-" + hashlib.sha256(canonical.encode()).hexdigest()
