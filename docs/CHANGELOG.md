@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Complete-request price-cache snapshots with TTL and adjustment-mode isolation.
+- Currency-denominated simulation capital and fixed-fee CLI options; rejected
+  unaffordable trades are reported without making the portfolio negative.
+- Configuration/data/code identities in output JSON and simulation history.
+- Offline dashboard interaction coverage in CI and regression tests for temporal
+  alignment, self-financing accounting, missing uncertainty, and failed folds.
+
 - Empirical out-of-sample interval coverage (`coverage80` / `coverage95`) in the
   walk-forward backtest, reported in the CLI alongside the live forecast bands.
 - Run history records which sentiment scorer produced each run (`sentiment_model`
@@ -19,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verified.
 
 ### Changed
+
+- Only completed calendar months are analyzed; `--end` is exclusive and missing
+  interior months are rejected. Use the first day of the next month to include a
+  complete month.
+- Final-period performance replaces the unsupported “touched once” holdout claim.
+  Repeated runs count as one experiment when configuration, data, and code match.
+- Forecasts/signals are reused across interval evaluation and sizing/cost variants;
+  dashboard simulations are cached separately from experiment persistence.
+- Undefined JSON metrics are `null`; HTML charts embed Plotly for offline viewing.
+- Historical trading reports are preserved as superseded archives. All 20 monthly
+  studies were regenerated from fresh retained price snapshots; corrected tables,
+  JSON evidence, and the equity chart replace their old headline claims.
 
 - `--sentiment-model finbert` without the `finbert` extra now stops before any
   ticker is processed, with the install command, instead of failing per ticker.
@@ -34,25 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Simulated rebalances account for drifted holdings and self-financing fees;
-  fixed fees use explicit starting capital and unaffordable trades are rejected.
-- Missing prediction intervals target cash instead of maximal exposure. Signals
-  are reused across sizing/cost variants without changing point-in-time inputs.
-- Simulation identities include configuration, data, and code; repeated runs do
-  not inflate variant counts. Untracked history is explicitly unknown.
-- Final-period performance replaces the unsupported untouched-holdout claim.
-- Forecast/simulation JSON records reproducibility metadata and writes null for
-  undefined metrics instead of non-standard NaN/Infinity values.
-
-- Cache hits require complete request coverage, preserve exclusive end dates and
-  adjustment mode, and expire historical snapshots after the TTL.
-- Historical news stays within its requested publication window; unavailable
-  windows return no news instead of falling back to current headlines.
-- Monthly inputs reject incomplete calendar periods, missing months, invalid
-  prices, and mismatched evaluation dates.
-- GBM volatility features exclude the target and update recursively. Backtests
-  report successful/failed folds and reuse one Holt-Winters fit per fold.
-- Runtime configuration rejects invalid dates, non-finite values, and limits.
+- Cache expansions fetch the requested history and retain exclusive end semantics;
+  historical adjusted prices expire instead of being assumed immutable.
+- Historical news never falls back to current articles; publication times must be
+  within the requested window.
+- GBM volatility features exclude their prediction target and update recursively.
+- Backtests report actual successful folds and require comparable model coverage.
+- Simulation trades use actual drifted holdings and pay self-financing trade costs.
+  Missing or invalid intervals no longer imply negligible risk and maximal exposure.
+- Dashboard results survive settings changes, requested simulation failures fail
+  the CLI, and invalid configuration is rejected before downloads.
+- Setup documentation uses shell exports or Streamlit secrets rather than claiming
+  that `.env` files are loaded automatically.
 
 - Interactive Plotly chart: the disclaimer no longer overlaps the date axis,
   prediction-band edges no longer render stray marker dots, and legend colors are

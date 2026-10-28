@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 from stockpredictor import cli, data
 
 
@@ -101,3 +103,80 @@ def test_cli_finbert_without_extra_fails_before_any_ticker_work(tmp_path, monkey
         ]
     )
     assert code == 2
+
+
+@pytest.mark.parametrize(
+    "extra", [["--commission-bps", "-1"], ["--holdout", "0"], ["--rf-rate", "nan"]]
+)
+def test_cli_rejects_invalid_settings_before_fetch(extra, tmp_path, monkeypatch):
+    def must_not_fetch(*args, **kwargs):
+        raise AssertionError("invalid configuration fetched prices")
+
+    monkeypatch.setattr(data, "_default_downloader", must_not_fetch)
+    assert (
+        cli.main(
+            [
+                "--tickers",
+                "AAPL",
+                "--start",
+                "2020-01-01",
+                "--end",
+                "2025-01-01",
+                "--outdir",
+                str(tmp_path),
+                "--simulate",
+                *extra,
+            ]
+        )
+        == 2
+    )
+    assert not list(tmp_path.iterdir())
+
+
+def test_requested_simulation_failure_fails_cli(fake_downloader, tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(cli, "_make_news_client", lambda logger: None)
+    monkeypatch.setattr(data, "_default_downloader", fake_downloader)
+
+    def fail(*args, **kwargs):
+        raise ValueError("insufficient simulation history")
+
+    monkeypatch.setattr(cli.pipeline, "run_simulation", fail)
+    assert (
+        cli.main(
+            [
+                "--tickers",
+                "AAPL",
+                "--start",
+                "2020-01-01",
+                "--end",
+                "2025-01-01",
+                "--outdir",
+                str(tmp_path),
+                "--simulate",
+                "--no-cache",
+                "--no-backtest",
+            ]
+        )
+        == 1
+    )
+    assert "insufficient simulation history" in caplog.text
+
+
+def test_summary_never_compares_incomplete_folds(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    import pandas as pd
+
+    incomplete = {"mase": 0.1, "folds": 1.0, "attempted_folds": 4.0, "mase_folds": 1.0}
+    complete = {"mase": 1.0, "folds": 4.0, "attempted_folds": 4.0, "mase_folds": 4.0}
+    result = SimpleNamespace(
+        ticker="TEST",
+        monthly=pd.Series([100.0]),
+        forecast=SimpleNamespace(point=pd.Series([101.0]), intervals={}),
+        sentiment=SimpleNamespace(label=lambda: "no news", effective=0.0, n_articles=0),
+        backtest={"holt_winters": incomplete, "seasonal_naive": complete},
+    )
+    logger = Mock()
+    cli._summarize(result, logger)
+    assert "comparison unavailable" in logger.info.call_args_list[0].args[-1]

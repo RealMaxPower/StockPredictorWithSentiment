@@ -19,7 +19,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-t", "--tickers", required=True, help="Comma-separated tickers, e.g. AAPL,MSFT,NVDA"
     )
     p.add_argument("-s", "--start", required=True, help="Start date YYYY-MM-DD")
-    p.add_argument("-e", "--end", required=True, help="End date YYYY-MM-DD")
+    p.add_argument("-e", "--end", required=True, help="Exclusive end date YYYY-MM-DD")
     p.add_argument("-o", "--outdir", default="stock_plots", help="Output directory")
     p.add_argument(
         "--pagesize", type=int, default=config.PAGE_SIZE, help="News headlines to fetch per ticker"
@@ -66,6 +66,15 @@ def _build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--spread-bps", type=float, default=config.SPREAD_BPS)
     sim.add_argument("--slippage-bps", type=float, default=config.SLIPPAGE_BPS)
     sim.add_argument(
+        "--fixed-fee", type=float, default=config.FIXED_FEE, help="Fee per trade in currency units"
+    )
+    sim.add_argument(
+        "--initial-capital",
+        type=float,
+        default=config.INITIAL_CAPITAL,
+        help="Starting portfolio value in currency units",
+    )
+    sim.add_argument(
         "--target-vol", type=float, default=config.TARGET_VOL, help="Annualized vol target (vol)"
     )
     sim.add_argument(
@@ -75,7 +84,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--holdout",
         type=int,
         default=config.HOLDOUT_PERIODS,
-        help="Months in the once-touched held-out slice",
+        help="Months in the descriptive final-period slice (not independent validation)",
     )
     return p
 
@@ -107,8 +116,10 @@ def _summarize(result: pipeline.TickerResult, logger) -> None:
     sn_mase = result.backtest.get("seasonal_naive", {}).get("mase", float("nan"))
     verdict = ""
     # NaN != NaN, so this is False whenever a backtest value is missing/NaN.
-    if hw_mase == hw_mase and sn_mase == sn_mase:
+    if forecast.comparable_mase(hw, result.backtest.get("seasonal_naive", {})):
         verdict = "beats seasonal-naive" if hw_mase < sn_mase else "WORSE than seasonal-naive"
+    elif result.backtest:
+        verdict = "incomplete fold coverage; comparison unavailable"
     logger.info(
         "%s: %d-mo change %+.1f%% | news=%s (eff %.3f, n=%d) | backtest MASE=%.3f %s",
         result.ticker,
@@ -153,12 +164,13 @@ def _run_and_print_simulation(ticker, cfg, result, out_dir, store, logger) -> No
     the variant to the store for multiple-testing accounting, and writes the
     SIM_metrics.json + equity-curve artifacts.
     """
-    try:
-        report = pipeline.run_simulation(ticker, cfg, monthly=result.monthly, store=store)
-    except (ValueError, forecast.InsufficientDataError) as exc:
-        logger.error("%s: simulation skipped — %s", ticker, exc)
-        return
-    pipeline.persist_simulation_outputs(report, out_dir, cfg)
+    report = pipeline.run_simulation(ticker, cfg, monthly=result.monthly, store=store)
+    for warning in report.warnings:
+        if warning != config.DISCLAIMER:
+            logger.warning("%s: %s", ticker, warning)
+    paths = pipeline.persist_simulation_outputs(report, out_dir, cfg)
+    if not {"sim_metrics", "sim_plot"}.issubset(paths):
+        raise OSError("Required simulation outputs could not be written")
     print()  # blank line so the scorecard stands apart from the log stream
     print(
         evaluation.format_scorecard(
@@ -183,25 +195,31 @@ def main(argv: list | None = None) -> int:
         except ValueError as exc:
             logger.error("%s", exc)
 
-    cfg = config.AppConfig(
-        tickers=tickers,
-        start=args.start,
-        end=args.end,
-        outdir=args.outdir,
-        page_size=args.pagesize,
-        sentiment_enabled=not args.no_sentiment,
-        sentiment_model=args.sentiment_model,
-        use_cache=not args.no_cache,
-        db_path=args.db,
-        sizing_method=args.sizing,
-        rf_annual=args.rf_rate,
-        commission_bps=args.commission_bps,
-        spread_bps=args.spread_bps,
-        slippage_bps=args.slippage_bps,
-        target_vol=args.target_vol,
-        kelly_fraction=args.kelly_fraction,
-        holdout_periods=args.holdout,
-    )
+    try:
+        cfg = config.AppConfig(
+            tickers=tickers,
+            start=args.start,
+            end=args.end,
+            outdir=args.outdir,
+            page_size=args.pagesize,
+            sentiment_enabled=not args.no_sentiment,
+            sentiment_model=args.sentiment_model,
+            use_cache=not args.no_cache,
+            db_path=args.db,
+            sizing_method=args.sizing,
+            rf_annual=args.rf_rate,
+            commission_bps=args.commission_bps,
+            spread_bps=args.spread_bps,
+            slippage_bps=args.slippage_bps,
+            fixed_fee=args.fixed_fee,
+            initial_capital=args.initial_capital,
+            target_vol=args.target_vol,
+            kelly_fraction=args.kelly_fraction,
+            holdout_periods=args.holdout,
+        )
+    except ValueError as exc:
+        logger.error("Invalid configuration: %s", exc)
+        return 2
     if not cfg.tickers:
         logger.error("No valid tickers provided.")
         return 1
@@ -246,7 +264,9 @@ def main(argv: list | None = None) -> int:
                     run_backtest=not args.no_backtest,
                     compare_models=args.compare_models,
                 )
-                pipeline.persist_outputs(result, out_dir, cfg)
+                paths = pipeline.persist_outputs(result, out_dir, cfg)
+                if not {"news", "metrics", "plot"}.issubset(paths):
+                    raise OSError("Required forecast outputs could not be written")
                 if store is not None:
                     store.save_run(result, run_date, cfg)
                 _summarize(result, logger)
@@ -263,7 +283,7 @@ def main(argv: list | None = None) -> int:
             store.close()
 
     logger.info("Done: %d ok, %d failed.", len(cfg.tickers) - failures, failures)
-    return 0 if failures < len(cfg.tickers) else 1
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

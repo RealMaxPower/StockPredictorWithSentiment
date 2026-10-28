@@ -12,22 +12,22 @@ benchmarks the forecast against naive baselines via a walk-forward backtest, and
 
 ## Environment
 
-- Python **3.9+**.
+- Python **3.10+**.
 - Install for development (add `app` for the dashboard; `finbert` for finance-tuned sentiment):
   ```bash
   pip install -e ".[dev,viz,ml,app]"
   ```
   (core deps live in `pyproject.toml`; `requirements.txt` is kept for the no-install path.)
 - `NEWSAPI_KEY` is **optional**. Without it, forecasts still run and sentiment degrades to
-  "no news" (the tilt becomes a no-op). Set it via `.env` (see `.env.example`) or the env.
+  "no news" (the tilt becomes a no-op). Export it in the shell or use Streamlit secrets; `.env` is not automatically loaded.
 
 ## Running
 
 ```bash
 # CLI (shim keeps the original invocation working)
-python3 stock_forecast_with_sentiment.py --tickers AAPL,NVDA --start 2015-01-01 --end 2024-12-31 --compare-models
+python3 stock_forecast_with_sentiment.py --tickers AAPL,NVDA --start 2015-01-01 --end 2025-01-01 --compare-models
 # or, after `pip install -e .`
-stock-forecast --tickers AAPL --start 2015-01-01 --end 2024-12-31
+stock-forecast --tickers AAPL --start 2015-01-01 --end 2025-01-01
 # dashboard
 streamlit run app.py
 ```
@@ -43,7 +43,7 @@ ruff check . && ruff format --check .
 mypy stockpredictor
 ```
 
-All three must be green; CI (`.github/workflows/ci.yml`) runs them on 3.9/3.11/3.12 plus
+All three must be green; CI (`.github/workflows/ci.yml`) runs them on 3.10/3.11/3.12 plus
 `pip-audit`. Tests inject fake clients (`tests/conftest.py`), so add tests for new logic
 the same way rather than hitting the network.
 
@@ -80,8 +80,8 @@ the same way rather than hitting the network.
 
 ## Common pitfalls
 
-- NewsAPI free tier serves ~30 days; an older `--end` triggers a loud warning and a no-date
-  fallback. That's expected — don't "fix" it by reverting to "last 30 days from now".
+- NewsAPI free tier serves ~30 days; an older `--end` triggers a warning; a no-date
+  fallback is forbidden: unavailable historical windows return no news.
 - Seasonal Holt-Winters needs ≥24 monthly points; below that the code falls back to
   non-seasonal, and below 6 points raises `InsufficientDataError`.
 - `update_readme_date.py` is hardened (script-relative path, error handling, no silent no-op);
