@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import os
+from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
@@ -86,15 +87,15 @@ def _run(
 
 @st.cache_data(show_spinner=False, ttl=3600, max_entries=64)
 def _simulate(ticker: str, monthly: pd.Series, cfg: config.AppConfig, implementation: str):
-    """Cache pure computation; recording experiments belongs outside this function."""
-    return run_simulation(ticker, cfg, monthly=monthly)
+    """Cache a result and its execution identity; recording stays outside the cache."""
+    return run_simulation(ticker, cfg, monthly=monthly), uuid4().hex
 
 
 def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
     """Render the paper-trading simulation: equity overlay, scorecard, overfit warning."""
     sim_cfg = dataclasses.replace(cfg, sizing_method=sizing)
     try:
-        report = _simulate(ticker, result.monthly, sim_cfg, code_version())
+        report, execution_id = _simulate(ticker, result.monthly, sim_cfg, code_version())
     except Exception as exc:  # noqa: BLE001 - surface, don't crash the dashboard
         st.warning(f"Simulation unavailable for {ticker}: {exc}")
         return
@@ -102,14 +103,9 @@ def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
     if sim_cfg.use_cache:
         try:
             with Store(sim_cfg.db_path) as store:
-                logged = st.session_state.setdefault("logged_simulations", set())
-                key = (ticker, report.variant_id, sim_cfg.db_path)
-                if key not in logged:
-                    record_simulation(report, sim_cfg, store)
-                    if report.variants_tried is not None:
-                        logged.add(key)
-                else:
-                    report.variants_tried = store.count_simulations(ticker) or None
+                # The computation cache spans browser sessions. The database owns
+                # deduplication so reloads and concurrent sessions log it once.
+                record_simulation(report, sim_cfg, store, execution_id=execution_id)
         except Exception as exc:  # noqa: BLE001 - results survive optional history failures
             st.warning(f"Experiment history unavailable: {exc}")
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import numpy as np
 import pandas as pd
@@ -218,8 +220,46 @@ def test_existing_simulation_table_gains_metadata_columns(tmp_path):
     with sqlite3.connect(path) as connection:
         connection.executescript(store._SCHEMA)
         connection.execute("INSERT INTO simulations (ticker, variant_id) VALUES ('TEST', 'old')")
+        connection.execute("INSERT INTO simulations (ticker, variant_id) VALUES ('TEST', 'old')")
     with store.Store(path) as s:
         row = s.conn.execute("SELECT * FROM simulations").fetchone()
         assert row["variant_id"] == "old"
         assert row["configuration_json"] is None
         assert row["data_fingerprint"] is None
+        assert row["execution_id"] is None
+        assert s.count_simulation_runs("TEST") == 2
+        assert s.count_simulations("TEST") == 1
+
+    with store.Store(path) as s:
+        assert s.count_simulation_runs("TEST") == 2
+
+
+def test_cached_execution_is_idempotent_across_connections(tmp_path, cfg):
+    path = str(tmp_path / "executions.db")
+    with store.Store(path):
+        pass
+    curve = pd.Series([1.0, 1.1, 1.2], index=pd.date_range("2023-01-31", periods=3, freq="ME"))
+    card = evaluation.build_scorecard(curve, curve, curve, pd.Series([1.0, 0.0]), rf_annual=0.0)
+    ready = Barrier(2)
+
+    def save_from_session():
+        with store.Store(path) as s:
+            ready.wait(timeout=5)
+            return s.save_simulation("TEST", "same-variant", card, cfg, execution_id="cached-run")
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        sessions = [workers.submit(save_from_session) for _ in range(2)]
+        first, second = (session.result(timeout=10) for session in sessions)
+    assert first == second
+    with store.Store(path) as s:
+        assert s.count_simulation_runs("TEST") == 1
+        assert s.count_simulations("TEST") == 1
+        # A retry after reconnecting returns the existing row, even if another
+        # execution has since become the most recently inserted row.
+        fresh = s.save_simulation("TEST", "same-variant", card, cfg, execution_id="new-run")
+        assert fresh != first
+        assert (
+            s.save_simulation("TEST", "same-variant", card, cfg, execution_id="cached-run") == first
+        )
+        assert s.count_simulation_runs("TEST") == 2
+        assert s.count_simulations("TEST") == 1

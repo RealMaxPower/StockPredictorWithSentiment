@@ -202,8 +202,15 @@ def run_simulation(
     return report
 
 
-def record_simulation(report: SimulationReport, cfg: config.AppConfig, store: Any) -> None:
-    """Record an experiment outside computation caches; failures remain visible."""
+def record_simulation(
+    report: SimulationReport,
+    cfg: config.AppConfig,
+    store: Any,
+    *,
+    execution_id: str | None = None,
+) -> None:
+    """Record a run, optionally idempotently for a cached computation's identity."""
+    report.variants_tried = None
     try:
         store.save_simulation(
             report.ticker,
@@ -213,6 +220,7 @@ def record_simulation(report: SimulationReport, cfg: config.AppConfig, store: An
             configuration=report.configuration,
             data_fingerprint=report.data_fingerprint,
             code_version=report.code_version,
+            execution_id=execution_id,
         )
         report.variants_tried = store.count_simulations(report.ticker)
     except Exception as exc:  # noqa: BLE001 - an optional store must not discard results

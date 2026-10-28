@@ -3,6 +3,10 @@
 Run from the checkout root: ``python -m scripts.regenerate_results --help``.
 No SQLite cache or news service is used. Every requested ticker, including failures,
 appears in summary.json; an interrupted run remains visibly incomplete.
+
+Manifest schema 2 hashes the stored ``configuration_identity`` as sorted, compact
+JSON. It contains only canonical simulation settings, so output paths and source
+mode do not affect the hash. The full runtime configuration is retained separately.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from typing import Any
 
 import pandas as pd
 
-from stockpredictor import config, data, pipeline
+from stockpredictor import config, data, pipeline, strategy
 from stockpredictor.reproducibility import code_version
 from stockpredictor.sanitize import sanitize_ticker
 from stockpredictor.serialization import json_safe
@@ -114,7 +118,7 @@ def main(argv: list[str] | None = None, *, downloader: data.Downloader | None = 
     script_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     entries: list[dict[str, Any]] = [{"ticker": ticker, "status": "pending"} for ticker in tickers]
     summary: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "running",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "code_version": code_version(),
@@ -135,8 +139,13 @@ def main(argv: list[str] | None = None, *, downloader: data.Downloader | None = 
         ticker = entry["ticker"]
         cfg = replace(settings, tickers=[ticker])
         configuration = asdict(cfg)
+        identity = {
+            "schema": "simulation-configuration-v1",
+            "settings": strategy.variant_config(cfg),
+        }
+        entry["configuration_identity"] = identity
         entry["configuration_sha256"] = hashlib.sha256(
-            json.dumps(configuration, sort_keys=True, allow_nan=False).encode()
+            json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
         ).hexdigest()
         source: dict[str, Any] = {
             "mode": summary["source_mode"],

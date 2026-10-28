@@ -62,6 +62,7 @@ def test_offline_study_keeps_missing_tickers_and_strict_json(tmp_path, prices):
     )
     assert status == 1
     manifest = _read_json(out / "summary.json")
+    assert manifest["schema_version"] == 2
     assert manifest["status"] == "complete_with_errors"
     assert (manifest["attempted"], manifest["succeeded"], manifest["failed"]) == (2, 1, 1)
     assert [entry["ticker"] for entry in manifest["results"]] == ["AAPL", "MSFT"]
@@ -76,6 +77,15 @@ def test_offline_study_keeps_missing_tickers_and_strict_json(tmp_path, prices):
     assert (out / "prices" / "AAPL.csv").read_bytes() == snapshot.read_bytes()
     assert missing["status"] == "error"
     assert missing["error"]["type"] == "FileNotFoundError"
+    # Failed tickers still identify the settings that were attempted.
+    assert (
+        manifest["results"][0]["configuration_identity"]
+        == manifest["results"][1]["configuration_identity"]
+    )
+    assert (
+        manifest["results"][0]["configuration_sha256"]
+        == manifest["results"][1]["configuration_sha256"]
+    )
     assert "not an independent holdout" in manifest["final_period_note"]
 
 
@@ -116,6 +126,51 @@ def test_download_is_explicit_and_snapshot_replays_exactly(tmp_path, prices):
     assert original["data_fingerprint"] == replay["data_fingerprint"]
     assert original["equity"] == replay["equity"]
     assert original["scorecard"] == replay["scorecard"]
+    original_manifest = _read_json(downloaded / "summary.json")
+    replay_manifest = _read_json(replayed / "summary.json")
+    assert original_manifest["configuration"]["outdir"] == str(downloaded)
+    assert replay_manifest["configuration"]["outdir"] == str(replayed)
+    original_entry = original_manifest["results"][0]
+    replay_entry = replay_manifest["results"][0]
+    assert original_entry["configuration_sha256"] == replay_entry["configuration_sha256"]
+    identity = replay_entry["configuration_identity"]
+    assert identity == original_entry["configuration_identity"]
+    assert identity["schema"] == "simulation-configuration-v1"
+    assert not {"outdir", "db_path", "use_cache"} & identity["settings"].keys()
+    # Consumers can reproduce the digest solely from the manifest's stored input.
+    assert (
+        replay_entry["configuration_sha256"]
+        == hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest()
+    )
+
+
+def test_configuration_identity_changes_with_simulation_settings(tmp_path, prices):
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    prices.to_csv(inputs / "AAPL.csv", index_label="Date", float_format="%.17g")
+    common = [
+        "--prices-dir",
+        str(inputs),
+        "--tickers",
+        "AAPL",
+        "--start",
+        "2023-01-01",
+        "--end",
+        "2025-01-01",
+    ]
+    runs = []
+    for name, rate in (("baseline", "0.04"), ("different-risk-free-rate", "0.06")):
+        output = tmp_path / name
+        assert study.main([*common, "--outdir", str(output), "--rf-rate", rate]) == 0
+        runs.append(_read_json(output / "summary.json")["results"][0])
+    original, changed = runs
+    assert original["data_fingerprint"] == changed["data_fingerprint"]
+    assert original["configuration_sha256"] != changed["configuration_sha256"]
+    assert original["configuration_identity"]["settings"]["rf_annual"] == 0.04
+    assert changed["configuration_identity"]["settings"]["rf_annual"] == 0.06
+    assert original["scorecard"] != changed["scorecard"]
 
 
 def test_existing_output_is_never_overwritten(tmp_path):

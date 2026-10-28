@@ -69,9 +69,21 @@ class Store:
             # Pre-existing rows stay NULL: which scorer produced them is unknown.
             self.conn.execute("ALTER TABLE runs ADD COLUMN sentiment_model TEXT")
         sim_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(simulations)")}
-        for name in ("configuration_json", "start", "end", "data_fingerprint", "code_version"):
+        for name in (
+            "configuration_json",
+            "start",
+            "end",
+            "data_fingerprint",
+            "code_version",
+            "execution_id",
+        ):
             if name not in sim_cols:
                 self.conn.execute(f'ALTER TABLE simulations ADD COLUMN "{name}" TEXT')
+        # NULL preserves every legacy/uncached execution, including repeated variants.
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS simulations_execution_id "
+            "ON simulations(execution_id)"
+        )
 
     def close(self) -> None:
         self.conn.close()
@@ -240,20 +252,22 @@ class Store:
         configuration: dict | None = None,
         data_fingerprint: str | None = None,
         code_version: str | None = None,
+        execution_id: str | None = None,
     ) -> int:
         """Log one paper-trading run so the best-of-N overfit warning can be honest.
 
-        Every strategy/parameter variant tried accumulates a row here; ``count_
-        simulations`` reads them back so the reporting layer can say how many were
-        attempted (brief §3.5).
+        A supplied execution identity makes retries/cache renders idempotent, even
+        across connections. Omit it to record every invocation as a separate run.
+        Distinct variants and executions are counted separately.
         """
         run_date = datetime.now().isoformat(timespec="seconds")
         cur = self.conn.execute(
             "INSERT INTO simulations (ticker, run_date, variant_id, sizing_method, "
             "rf_annual, beat_bh, beat_rf, excess_cagr_vs_bh, excess_sharpe_vs_bh, "
             "strategy_cagr, max_drawdown, turnover_annual, scorecard_json, "
-            'configuration_json, start, "end", data_fingerprint, code_version) '
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            'configuration_json, start, "end", data_fingerprint, code_version, execution_id) '
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(execution_id) DO NOTHING",
             (
                 ticker.upper(),
                 run_date,
@@ -277,9 +291,15 @@ class Store:
                 cfg.end,
                 data_fingerprint,
                 code_version,
+                execution_id,
             ),
         )
         self.conn.commit()
+        if execution_id is not None:
+            row = self.conn.execute(
+                "SELECT id FROM simulations WHERE execution_id=?", (execution_id,)
+            ).fetchone()
+            return int(row["id"])
         return int(cur.lastrowid or 0)
 
     def count_simulations(self, ticker: str) -> int:
