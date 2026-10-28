@@ -104,8 +104,11 @@ def _make_news_client(logger) -> object | None:
         from newsapi import NewsApiClient
 
         return NewsApiClient(api_key=key)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Could not init NewsAPI client (%s); continuing without news.", exc)
+    except Exception:  # noqa: BLE001
+        logger.error(
+            "Could not init NewsAPI client; check the newsapi-python installation "
+            "and API key configuration; continuing without news."
+        )
         return None
 
 

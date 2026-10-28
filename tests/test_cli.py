@@ -2,12 +2,46 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
 import pytest
 
 from stockpredictor import cli, data
+
+
+def test_news_client_initialization_failure_keeps_key_out_of_logs(monkeypatch, caplog):
+    import newsapi
+
+    key = "private-constructor-canary"
+    monkeypatch.setenv("NEWSAPI_KEY", key)
+
+    def fail(**kwargs):
+        raise RuntimeError(f"client initialization failed: {kwargs!r}")
+
+    monkeypatch.setattr(newsapi, "NewsApiClient", fail)
+    assert cli._make_news_client(logging.getLogger("stockpredictor.cli")) is None
+    assert "continuing without news" in caplog.text.lower()
+    for record in caplog.records:
+        assert key not in record.getMessage()
+        assert key not in repr(record.args)
+        assert record.exc_info is None
+
+
+def test_news_client_initialization_still_passes_the_configured_key(monkeypatch):
+    from unittest.mock import Mock
+
+    import newsapi
+
+    key = "private-constructor-canary"
+    monkeypatch.setenv("NEWSAPI_KEY", key)
+    constructor = Mock()
+    monkeypatch.setattr(newsapi, "NewsApiClient", constructor)
+    assert (
+        cli._make_news_client(logging.getLogger("stockpredictor.cli")) is constructor.return_value
+    )
+    constructor.assert_called_once_with(api_key=key)
 
 
 def test_cli_runs_offline_without_newsapi(fake_downloader, tmp_path, monkeypatch):
