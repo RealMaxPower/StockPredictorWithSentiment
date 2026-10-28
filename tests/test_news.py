@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from newsapi.newsapi_exception import NewsAPIException
 
 from stockpredictor import news
 
@@ -105,3 +106,77 @@ def test_sdk_range_exception_does_not_retry_without_dates(cfg):
     client = RejectingClient()
     assert news.fetch_articles(client, "AAPL", "2024-12-31", cfg, NOOP) == []
     assert client.calls == 1
+
+
+def _assert_private_details_not_logged(caplog, *private_values):
+    for record in caplog.records:
+        captured = (record.getMessage(), repr(record.args), str(record.msg))
+        assert all(value not in text for value in private_values for text in captured)
+        assert record.exc_info is None
+        assert record.exc_text is None
+
+
+@pytest.mark.parametrize(
+    "error_code", ["apiKeyInvalid", "private-code-canary", {"key": "private-code-canary"}]
+)
+def test_provider_failure_logs_only_recognized_codes(cfg, caplog, error_code):
+    private_message = "Authorization: Bearer private-message-canary"
+    client = Client([{"code": error_code, "message": private_message}, ARTS])
+    waits = []
+
+    result = news.fetch_articles(client, "AAPL", "2024-12-31", cfg, waits.append)
+
+    assert result[0]["title"] == ARTS["articles"][0]["title"]
+    assert len(client.calls) == 2
+    assert waits == [2]
+    assert client.calls[0] == client.calls[1]
+    _assert_private_details_not_logged(caplog, "private-code-canary", "private-message-canary")
+    assert (
+        "apiKeyInvalid" in caplog.text
+        if error_code == "apiKeyInvalid"
+        else "unrecognized" in caplog.text
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("https://news.test/?apiKey=private-canary%2Fencoded"),
+        NewsAPIException(
+            {"code": "apiKeyInvalid", "message": {"Authorization": "Bearer private-canary"}}
+        ),
+        NewsAPIException({"code": "private-canary", "message": "failed"}),
+    ],
+)
+def test_sdk_failure_keeps_private_details_out_of_log_records(cfg, caplog, failure):
+    class FailingClient:
+        calls = []
+
+        def get_everything(self, **kwargs):
+            self.calls.append(kwargs)
+            raise failure
+
+    client = FailingClient()
+    waits = []
+    assert news.fetch_articles(client, "AAPL", "2024-12-31", cfg, waits.append) == []
+    assert len(client.calls) == cfg.max_retries
+    assert waits == [2**attempt for attempt in range(1, cfg.max_retries)]
+    assert all(call == client.calls[0] for call in client.calls)
+    assert "all news attempts failed" in caplog.text
+    _assert_private_details_not_logged(caplog, "private-canary")
+
+
+@pytest.mark.parametrize("marker", ["parameterInvalid", "too far in the past"])
+def test_private_sdk_range_error_still_stops_without_retry(cfg, caplog, marker):
+    class RangeFailure:
+        calls = 0
+
+        def get_everything(self, **kwargs):
+            self.calls += 1
+            raise RuntimeError(f"{marker}: private-range-canary")
+
+    client = RangeFailure()
+    assert news.fetch_articles(client, "AAPL", "2024-12-31", cfg, NOOP) == []
+    assert client.calls == 1
+    assert "requested news window unavailable" in caplog.text
+    _assert_private_details_not_logged(caplog, "private-range-canary")

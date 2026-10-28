@@ -1,7 +1,7 @@
 # Corrected monthly study results
 
-> **Educational demo — not financial advice.** Recomputed October 27, 2026
-> (America/Phoenix) with corrected holdings and transaction-cost accounting.
+> **Educational demo — not financial advice.** Recomputed October 28, 2026 (UTC)
+> with corrected holdings and transaction-cost accounting.
 > All eight requested tickers completed: **beat buy-and-hold 0/8; beat the configured
 > 4% risk-free benchmark 7/8**. These are descriptive historical results, not a new
 > independent holdout or evidence that an edge is impossible.
@@ -32,7 +32,7 @@ no failed or excluded tickers in this run.
 | Initial capital / fixed fee | 10,000 / 0 currency units |
 | Cash benchmark | Constant 4% annual rate, not historical T-bill yields |
 | Acquisition | Fresh yfinance download with `auto_adjust=True`; no SQLite cache or news |
-| Recorded UTC acquisition/run interval | 2026-10-28 06:22:26–06:23:15 UTC (October 27 in Phoenix) |
+| Recorded UTC acquisition/run interval | 2026-10-28 06:22:26–06:23:15 UTC |
 | Environment | Python 3.12.12; NumPy 2.5.3; pandas 3.0.6; statsmodels 0.15.0; yfinance 1.7.0 |
 | Earlier experiments | Unknown; this run does not establish a total variant count |
 

@@ -1,7 +1,7 @@
 # Phase 5 trading rerun — predictability screen not revalidated
 
 > **Educational demo — not financial advice.** The monthly trading component was
-> recomputed October 27, 2026 (America/Phoenix), with corrected portfolio accounting.
+> recomputed October 28, 2026 (UTC), with corrected portfolio accounting.
 > All twelve additional tickers completed: **beat buy-and-hold 1/12; beat the 4%
 > risk-free benchmark 11/12**. Combined with the corrected original eight names,
 > the descriptive counts are **1/20 vs buy-and-hold and 18/20 vs risk-free**.
@@ -28,7 +28,7 @@ method are in [`RESULTS.md`](RESULTS.md).
 |---|---|
 | Requested prices | `[2005-01-01, 2025-01-01)`; end exclusive |
 | Source | Fresh yfinance `auto_adjust=True`; no legacy cache or news |
-| Acquisition/run interval | 2026-10-28 06:25:43–06:26:48 UTC (October 27 in Phoenix) |
+| Acquisition/run interval | 2026-10-28 06:25:43–06:26:48 UTC |
 | Signal / sizing | Price-only Holt-Winters; annual volatility target 10% |
 | Costs | Commission 1 bps + half of 5 bps full spread + 5 bps slippage |
 | Initial capital / fixed fee | 10,000 / 0 currency units |

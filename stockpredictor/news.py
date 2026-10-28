@@ -24,6 +24,32 @@ logger = logging.getLogger("stockpredictor.news")
 # NewsAPI free tier only serves roughly the last month of articles.
 _FREE_TIER_DAYS = 30
 
+# Only application-owned codes may enter diagnostic records. Provider messages,
+# unknown codes and SDK exception payloads can echo credentials in any encoding.
+# Recognized codes: https://newsapi.org/docs/errors
+_LOGGABLE_ERROR_CODES = {
+    code: code
+    for code in (
+        "apiKeyDisabled",
+        "apiKeyExhausted",
+        "apiKeyInvalid",
+        "apiKeyMissing",
+        "parameterInvalid",
+        "parametersMissing",
+        "rateLimited",
+        "sourcesTooMany",
+        "sourceDoesNotExist",
+        "unexpectedError",
+    )
+}
+
+
+def _error_code_for_log(code: object) -> str:
+    if isinstance(code, str):
+        return _LOGGABLE_ERROR_CODES.get(code, "unrecognized")
+    return "unrecognized"
+
+
 _COMPANY_NAMES = {
     "AAPL": "Apple",
     "MSFT": "Microsoft",
@@ -171,8 +197,8 @@ def fetch_articles(
             resp = client.get_everything(**kwargs) or {}
 
             if resp.get("code"):
-                code, msg = resp.get("code", ""), resp.get("message", "")
-                logger.warning("%s: NewsAPI error (%s): %s", log_ticker, scrub(code), scrub(msg))
+                code = resp.get("code")
+                logger.warning("%s: NewsAPI error (%s)", log_ticker, _error_code_for_log(code))
                 if code == "parameterInvalid":
                     logger.warning(
                         "%s: requested news window unavailable; using no news", log_ticker
@@ -196,8 +222,18 @@ def fetch_articles(
             return [_normalize(a) for a in aligned]
 
         except Exception as exc:  # noqa: BLE001 - networking is best-effort
+            # NewsAPIException stores the response in .exception. Keep only an
+            # allowlisted code; never attach raw details or a traceback to logs.
+            details = vars(exc).get("exception")
+            code = details.get("code") if isinstance(details, dict) else None
+            logger.warning(
+                "%s: attempt %d failed (%s)",
+                log_ticker,
+                attempt + 1,
+                _error_code_for_log(code),
+            )
+            # Inspect privately to preserve historical-range fallback behavior.
             msg = str(exc)
-            logger.warning("%s: attempt %d failed: %s", log_ticker, attempt + 1, scrub(msg))
             if "parameterInvalid" in msg or "too far in the past" in msg:
                 logger.warning("%s: requested news window unavailable; using no news", log_ticker)
                 return []

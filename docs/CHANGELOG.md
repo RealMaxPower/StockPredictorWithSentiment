@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Study documentation uses UTC acquisition dates without personal timezone metadata.
 - Only completed calendar months are analyzed; `--end` is exclusive and missing
   interior months are rejected. Use the first day of the next month to include a
   complete month.
@@ -53,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- NewsAPI diagnostics omit raw provider payloads and client-initialization exception
+  text while retaining failure and retry information.
+- Numbered coverage-file copies are ignored to avoid committing local source paths.
 - Cache expansions fetch the requested history and retain exclusive end semantics;
   historical adjusted prices expire instead of being assumed immutable.
 - Historical news never falls back to current articles; publication times must be

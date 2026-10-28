@@ -33,6 +33,8 @@ ENV/
 htmlcov/
 .coverage
 .coverage.*
+# Numbered copies of coverage databases can contain local source paths.
+.coverage [0-9]*
 
 # Secrets & local config
 .env
