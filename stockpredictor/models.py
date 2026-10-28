@@ -53,11 +53,13 @@ def sarimax_model_fn(cfg: config.AppConfig) -> ModelFn:
 
 def make_features(series: pd.Series, n_lags: int = 6) -> pd.DataFrame:
     """Lagged returns + short rolling volatility — cheap, stationary GBM features."""
+    if not isinstance(n_lags, int) or isinstance(n_lags, bool) or n_lags <= 0:
+        raise ValueError("n_lags must be a positive integer")
     ret = series.pct_change()
     df = pd.DataFrame(index=series.index)
     for lag in range(1, n_lags + 1):
         df[f"ret_lag{lag}"] = ret.shift(lag)
-    df["roll_vol"] = ret.rolling(3).std()
+    df["roll_vol"] = ret.shift(1).rolling(3).std()
     df["target_ret"] = ret  # next-step return to predict (aligned to row)
     return df.dropna()
 
@@ -78,11 +80,11 @@ def gbm_model_fn(cfg: config.AppConfig, n_lags: int = 6) -> ModelFn:
         model.fit(feat[feature_cols].to_numpy(), feat["target_ret"].to_numpy())
 
         ret = train.pct_change()
-        recent = list(ret.dropna().iloc[-n_lags:])
+        recent = list(ret.dropna().iloc[-max(n_lags, 3) :])
         last_price = float(train.iloc[-1])
-        recent_vol = float(ret.iloc[-3:].std())
         preds = []
         for _ in range(horizon):
+            recent_vol = float(np.std(recent[-3:], ddof=1))
             row = list(reversed(recent[-n_lags:])) + [recent_vol]
             pred_ret = float(model.predict(np.array([row]))[0])
             last_price *= 1 + pred_ret
@@ -112,13 +114,23 @@ def extended_models(cfg: config.AppConfig) -> dict[str, ModelFn]:
 
 
 def select_best_model(monthly: pd.Series, cfg: config.AppConfig) -> tuple[str, dict]:
-    """Backtest the extended panel and return (best_model_name, full_summary) by MASE."""
+    """Select the lowest MASE among models valid on every attempted fold.
+
+    Partial evaluation must not reward a model for failing on difficult folds.
+    Undefined MASE (for example a constant training series) is not a valid basis
+    for selecting a winner, even if the point forecasts themselves succeeded.
+    """
     summary = forecast.backtest(monthly, cfg, models=extended_models(cfg))
-
-    def mase_of(name: str) -> float:
-        v = summary.get(name, {}).get("mase", float("nan"))
-        return v if v == v else float("inf")  # NaN -> worst
-
-    best = min(summary, key=mase_of)
-    logger.info("Best model for series: %s (MASE=%.3f)", best, mase_of(best))
+    eligible = {
+        name: metrics["mase"]
+        for name, metrics in summary.items()
+        if metrics["attempted_folds"] > 0
+        and metrics["folds"] == metrics["attempted_folds"]
+        and metrics["mase_folds"] == metrics["attempted_folds"]
+        and np.isfinite(metrics["mase"])
+    }
+    if not eligible:
+        raise ValueError("No model has finite MASE on every attempted backtest fold")
+    best = min(eligible, key=lambda name: eligible[name])
+    logger.info("Best model for series: %s (MASE=%.3f)", best, eligible[best])
     return best, summary

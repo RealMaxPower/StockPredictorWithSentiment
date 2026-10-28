@@ -6,7 +6,9 @@ the code) and a single ``AppConfig`` dataclass that the CLI and dashboard share.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
+from datetime import date
 
 # --- Forecast defaults -------------------------------------------------------
 HORIZON_MONTHS = 12
@@ -56,6 +58,7 @@ COMMISSION_BPS = 1.0  # broker commission per trade leg (bps of notional)
 SPREAD_BPS = 5.0  # full bid/ask spread (bps); a trade crosses half of it
 SLIPPAGE_BPS = 5.0  # market-impact / slippage (bps of notional)
 FIXED_FEE = 0.0  # optional flat fee per (non-zero) trade, in currency
+INITIAL_CAPITAL = 10_000.0  # currency units; plots normalize starting wealth to 1
 RF_ANNUAL = 0.04  # risk-free rate; a constant default emits a warning
 MAX_WEIGHT = 1.0  # long-only, no leverage: weight is clipped to [0, 1]
 TARGET_VOL = 0.10  # annualized volatility target for vol-sizing
@@ -63,7 +66,7 @@ KELLY_FRACTION = 0.25  # fractional Kelly (full Kelly is never the default)
 CONFIDENCE_FLOOR = 0.0  # minimum signal confidence to take any position
 MIN_EXCESS_RETURN = 0.0  # per-period excess return (μ−rf) required to go long
 SIM_WARMUP_MONTHS = MIN_MONTHS_FOR_ANY_FIT  # history needed before the first trade
-HOLDOUT_PERIODS = 12  # final out-of-sample slice, touched exactly once
+HOLDOUT_PERIODS = 12  # descriptive final-period slice, not protected validation
 # Below this many rebalances, annualized CAGR/Sharpe are extrapolated from too few
 # points to trust; the scorecard says so loudly rather than printing a tidy lie.
 MIN_RELIABLE_PERIODS = 24  # ~2 years of monthly rebalances
@@ -120,6 +123,7 @@ class AppConfig:
     spread_bps: float = SPREAD_BPS
     slippage_bps: float = SLIPPAGE_BPS
     fixed_fee: float = FIXED_FEE
+    initial_capital: float = INITIAL_CAPITAL
     # Risk-free, position limits, and sizing.
     rf_annual: float = RF_ANNUAL
     max_weight: float = MAX_WEIGHT
@@ -129,6 +133,83 @@ class AppConfig:
     min_excess_return: float = MIN_EXCESS_RETURN  # per-period μ−rf above which we go long
     sizing_method: str = "vol"  # "vol" (volatility targeting) | "kelly"
     holdout_periods: int = HOLDOUT_PERIODS
+
+    def __post_init__(self) -> None:
+        self.validate()
+
+    def validate(self) -> None:
+        """Reject invalid settings before network requests or expensive model fits."""
+        for name in ("start", "end"):
+            value = getattr(self, name)
+            if value:
+                try:
+                    parsed = date.fromisoformat(value)
+                    if parsed.isoformat() != value:
+                        raise ValueError
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"{name} must be YYYY-MM-DD") from exc
+        if self.start and self.end and self.start >= self.end:
+            raise ValueError("start must be before end (exclusive)")
+        for name in (
+            "horizon",
+            "seasonal_periods",
+            "min_months_seasonal",
+            "page_size",
+            "news_lookback_days",
+            "max_retries",
+            "plot_dpi",
+            "backtest_folds",
+            "backtest_horizon",
+            "holdout_periods",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.seasonal_periods < 2:
+            raise ValueError("seasonal_periods must be at least 2")
+        if self.min_months_seasonal < 2 * self.seasonal_periods:
+            raise ValueError("min_months_seasonal must cover at least two seasonal cycles")
+        if self.page_size > 100:
+            raise ValueError("page_size must be at most 100")
+        for name in (
+            "request_timeout",
+            "inter_ticker_sleep",
+            "sentiment_k",
+            "sentiment_max_adj",
+            "sentiment_decay_tau",
+            "commission_bps",
+            "spread_bps",
+            "slippage_bps",
+            "fixed_fee",
+            "initial_capital",
+            "rf_annual",
+            "max_weight",
+            "target_vol",
+            "kelly_fraction",
+            "confidence_floor",
+            "min_excess_return",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+            if name != "rf_annual" and value < 0:
+                raise ValueError(f"{name} must be non-negative")
+        for name in ("request_timeout", "sentiment_decay_tau", "initial_capital", "target_vol"):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive")
+        if self.rf_annual <= -1:
+            raise ValueError("rf_annual must be greater than -1")
+        for name in ("max_weight", "kelly_fraction", "confidence_floor"):
+            if getattr(self, name) > 1:
+                raise ValueError(f"{name} must be in [0, 1]")
+        if self.sentiment_max_adj >= 1:
+            raise ValueError("sentiment_max_adj must be below 1")
+        if self.monthly_agg not in ("last", "mean"):
+            raise ValueError("monthly_agg must be 'last' or 'mean'")
+        if self.sentiment_model not in ("vader", "finbert"):
+            raise ValueError("sentiment_model must be 'vader' or 'finbert'")
+        if self.sizing_method not in ("vol", "kelly"):
+            raise ValueError("sizing_method must be 'vol' or 'kelly'")
 
 
 def setup_logging(level: str = "INFO") -> logging.Logger:

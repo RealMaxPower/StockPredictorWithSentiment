@@ -1,0 +1,1015 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "created_at_utc": "2026-10-28T06:22:26.561020+00:00",
+  "code_version": "sha256:b6e15ddae37db637ed33822111e58079fa750c7a2b95ee2fa8b54bc26bad8cfa",
+  "script_sha256": "f1fe42c4424e2cca8c019bfa55bae6cc59b6851b7b628ba2830e872bb23f5a48",
+  "dependencies": {
+    "python": "3.12.12",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "statsmodels": "0.15.0",
+    "yfinance": "1.7.0"
+  },
+  "configuration": {
+    "tickers": [
+      "AAPL",
+      "MSFT",
+      "KO",
+      "JNJ",
+      "XOM",
+      "JPM",
+      "SPY",
+      "PG"
+    ],
+    "start": "2005-01-01",
+    "end": "2025-01-01",
+    "outdir": "/tmp/stockpredictor-results-review-network",
+    "horizon": 12,
+    "seasonal_periods": 12,
+    "min_months_seasonal": 24,
+    "monthly_agg": "last",
+    "page_size": 5,
+    "news_lookback_days": 30,
+    "max_retries": 3,
+    "request_timeout": 10,
+    "inter_ticker_sleep": 1.0,
+    "sentiment_enabled": false,
+    "sentiment_k": 0.02,
+    "sentiment_max_adj": 0.05,
+    "sentiment_decay_tau": 2.5,
+    "sentiment_model": "vader",
+    "plot_dpi": 150,
+    "backtest_folds": 4,
+    "backtest_horizon": 3,
+    "use_cache": false,
+    "db_path": "stockpredictor.db",
+    "commission_bps": 1.0,
+    "spread_bps": 5.0,
+    "slippage_bps": 5.0,
+    "fixed_fee": 0.0,
+    "initial_capital": 10000.0,
+    "rf_annual": 0.04,
+    "max_weight": 1.0,
+    "target_vol": 0.1,
+    "kelly_fraction": 0.25,
+    "confidence_floor": 0.0,
+    "min_excess_return": 0.0,
+    "sizing_method": "vol",
+    "holdout_periods": 12
+  },
+  "requested_tickers": [
+    "AAPL",
+    "MSFT",
+    "KO",
+    "JNJ",
+    "XOM",
+    "JPM",
+    "SPY",
+    "PG"
+  ],
+  "source_mode": "download",
+  "experiment_history": "Not consulted; earlier variants tried are unknown.",
+  "final_period_note": "Descriptive tail included in full scorecard; not an independent holdout.",
+  "results": [
+    {
+      "ticker": "AAPL",
+      "status": "ok",
+      "configuration_sha256": "2d60493fe82c74b7eb6cbaffc1c416b0e238c31e2cacc87b5450de74bbdbe039",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "2b98dd806fd8568d29375e512638c86a037ea7c5c24767e1e55100a4cbb67806",
+        "snapshot": "prices/AAPL.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-c6a0a8213668824331fac39cdf80e4ff974d17c787605f843113c2dacc46e88a",
+      "data_fingerprint": "3a73f9d334623b7a72be0f108bb8f6c0e07811e146d4679adceb5a939cf4fc62",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.21052232363079915,
+        "excess_sharpe_vs_bh": -0.07737746003104273,
+        "excess_cagr_vs_rf": 0.06140731641631958,
+        "skill_vs_bh": 0.03350115416580516,
+        "max_drawdown": -0.151068951986167,
+        "turnover_annual": 1.2468006661918798,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 5.52363268523526,
+          "cagr": 0.10140731641632006,
+          "ann_volatility": 0.07135052606281661,
+          "sharpe": 0.8440055791908396,
+          "sortino": 1.4235030522609797,
+          "max_drawdown": -0.151068951986167,
+          "hit_rate": 0.7553648068669528,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 193.72859510894025,
+          "cagr": 0.3119296400471192,
+          "ann_volatility": 0.3071122661865704,
+          "sharpe": 0.9213830392218824,
+          "sortino": 1.5233569121727812,
+          "max_drawdown": -0.5691135109249208,
+          "hit_rate": 0.6137339055793991,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.2252143404220286,
+        "excess_sharpe_vs_bh": -0.48958646591633315,
+        "excess_cagr_vs_rf": 0.041838253385812596,
+        "skill_vs_bh": 0.8276929777049669,
+        "max_drawdown": -0.017662488666450926,
+        "turnover_annual": 1.9612004804659104,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": 0.08183825338581285,
+          "cagr": 0.08183825338581285,
+          "ann_volatility": 0.05221926457957152,
+          "sharpe": 0.7825449423873381,
+          "sortino": 1.8838044767515212,
+          "max_drawdown": -0.017662488666450926,
+          "hit_rate": 0.75,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.30705259380784145,
+          "cagr": 0.30705259380784145,
+          "ann_volatility": 0.19525633833661635,
+          "sharpe": 1.2721314083036712,
+          "sortino": 3.021400102358025,
+          "max_drawdown": -0.11417774689830118,
+          "hit_rate": 0.5833333333333334,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "AAPL_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "MSFT",
+      "status": "ok",
+      "configuration_sha256": "937a3066cc365c3870987a10a62744740ff51a1adbb9b3f18d9c97a8bc9b69de",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "fe9c004d5add09e8f41e1fee87299477d5f459951f05fa24f6b5e65d4bb45ecd",
+        "snapshot": "prices/MSFT.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-36e2ac7184ff89944d5bed0c49fb2fd1ebb793c976b48f9ef35f28d5bdfbe72c",
+      "data_fingerprint": "c822df951887591616bae21acf567270372810a73ad7caf58b2bebd2ef17b792",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.10161927247762792,
+        "excess_sharpe_vs_bh": -0.21862352964991066,
+        "excess_cagr_vs_rf": 0.03506438704295167,
+        "skill_vs_bh": 0.17313164454480554,
+        "max_drawdown": -0.18491656460526718,
+        "turnover_annual": 2.6844719055896853,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 3.077112853366433,
+          "cagr": 0.07506438704295215,
+          "ann_volatility": 0.08352319299355776,
+          "sharpe": 0.43987675242863594,
+          "sortino": 0.7324765102420192,
+          "max_drawdown": -0.18491656460526718,
+          "hit_rate": 0.7896995708154506,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 22.549206524814696,
+          "cagr": 0.17668365952058007,
+          "ann_volatility": 0.22786392695814928,
+          "sharpe": 0.6585002820785466,
+          "sortino": 1.0816793692056927,
+          "max_drawdown": -0.5486133092945107,
+          "hit_rate": 0.6094420600858369,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": false,
+        "excess_cagr_vs_bh": -0.10797250476430431,
+        "excess_sharpe_vs_bh": -0.7599198920704877,
+        "excess_cagr_vs_rf": -0.018699115701153568,
+        "skill_vs_bh": 0.9043876303028103,
+        "max_drawdown": -0.044817432341291985,
+        "turnover_annual": 2.7460958961242086,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": 0.02130088429884669,
+          "cagr": 0.02130088429884669,
+          "ann_volatility": 0.07229357132447455,
+          "sharpe": -0.21847370864799034,
+          "sortino": -0.29988949292962436,
+          "max_drawdown": -0.044817432341291985,
+          "hit_rate": 0.6666666666666666,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.129273389063151,
+          "cagr": 0.129273389063151,
+          "ann_volatility": 0.18105461116859445,
+          "sharpe": 0.5414461834224974,
+          "sortino": 0.8242645173036115,
+          "max_drawdown": -0.08919912078676162,
+          "hit_rate": 0.5833333333333334,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "MSFT_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "KO",
+      "status": "ok",
+      "configuration_sha256": "ca37552ed7c072f014bfaa4a4c80cc658973326bee1335a02459aad995de23d5",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "01fbbd93ff0b878ca08484d139f52faa18a5f225c1d9c5235bd79daf76d294d8",
+        "snapshot": "prices/KO.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-d6d92c29753af2c8cb320734127a55b79215bae395f8ea881c936299f9e09dfd",
+      "data_fingerprint": "baefbbe6350b3a68d583a2420ef588846e8e1e4fc9b8397c024d3facabf39ed9",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.02346814270215125,
+        "excess_sharpe_vs_bh": -0.05003423617933511,
+        "excess_cagr_vs_rf": 0.02449796192141651,
+        "skill_vs_bh": 0.6548078206369479,
+        "max_drawdown": -0.16003151873124188,
+        "turnover_annual": 4.318383325087091,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 2.365597674368253,
+          "cagr": 0.06449796192141699,
+          "ann_volatility": 0.08516632070316557,
+          "sharpe": 0.3174885367943559,
+          "sortino": 0.44973345435559736,
+          "max_drawdown": -0.16003151873124188,
+          "hit_rate": 0.7939914163090128,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 4.1398251033325355,
+          "cagr": 0.08796610462356824,
+          "ann_volatility": 0.15712885652907202,
+          "sharpe": 0.367522772973691,
+          "sortino": 0.5300584748095418,
+          "max_drawdown": -0.3231481001771852,
+          "hit_rate": 0.6051502145922747,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": false,
+        "excess_cagr_vs_bh": -0.09131286394723659,
+        "excess_sharpe_vs_bh": -0.8918623822216951,
+        "excess_cagr_vs_rf": -0.04253761364433106,
+        "skill_vs_bh": 0.9161324948176103,
+        "max_drawdown": -0.08069826012407877,
+        "turnover_annual": 3.938252265852731,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": -0.002537613644330805,
+          "cagr": -0.002537613644330805,
+          "ann_volatility": 0.0764554503918604,
+          "sharpe": -0.5112666138953047,
+          "sortino": -0.5946827366876191,
+          "max_drawdown": -0.08069826012407877,
+          "hit_rate": 0.6666666666666666,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.08877525030290578,
+          "cagr": 0.08877525030290578,
+          "ann_volatility": 0.14755727492906723,
+          "sharpe": 0.3805957683263904,
+          "sortino": 0.5572088704261622,
+          "max_drawdown": -0.1284354294011434,
+          "hit_rate": 0.6666666666666666,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "KO_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "JNJ",
+      "status": "ok",
+      "configuration_sha256": "1e84d6d49488659745788c365462f2fbd66fbfb28cbf27929442ac7dff5cc0ca",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "7d89b242acfa5b9820b56d27d1857f9de7ba4bbf16fe21cfb6d3f21306f72230",
+        "snapshot": "prices/JNJ.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-ca34eba788d65ffd80c1c95ca90e7562b26164145b4f100aec45e1f952edfa60",
+      "data_fingerprint": "46e0f5c7344e9890d88c0a0ada653f00c76cd8cbb02a066517a76345a8944f62",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": false,
+        "excess_cagr_vs_bh": -0.03339926900843748,
+        "excess_sharpe_vs_bh": -0.2451084309284069,
+        "excess_cagr_vs_rf": -5.454749396616165e-07,
+        "skill_vs_bh": 0.5413133261356856,
+        "max_drawdown": -0.14304412527505217,
+        "turnover_annual": 3.939714360126288,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 1.1415402856410468,
+          "cagr": 0.03999945452506082,
+          "ann_volatility": 0.08517893257516096,
+          "sharpe": 0.04231689222713808,
+          "sortino": 0.06120139080558202,
+          "max_drawdown": -0.14304412527505217,
+          "hit_rate": 0.7424892703862661,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 2.956193543079795,
+          "cagr": 0.0733987235334983,
+          "ann_volatility": 0.14881939205202893,
+          "sharpe": 0.287425323155545,
+          "sortino": 0.4285283555917373,
+          "max_drawdown": -0.2782387780520018,
+          "hit_rate": 0.575107296137339,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": false,
+        "excess_cagr_vs_bh": -0.02498387223582199,
+        "excess_sharpe_vs_bh": -0.6764703765316602,
+        "excess_cagr_vs_rf": -0.1130985561619412,
+        "skill_vs_bh": 0.9737532748809806,
+        "max_drawdown": -0.07859232107346126,
+        "turnover_annual": 4.140185149866622,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": -0.07309855616194094,
+          "cagr": -0.07309855616194094,
+          "ann_volatility": 0.09682186432081369,
+          "sharpe": -1.1426938989764108,
+          "sortino": -1.3354696871692504,
+          "max_drawdown": -0.07859232107346126,
+          "hit_rate": 0.5,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": -0.04811468392611895,
+          "cagr": -0.04811468392611895,
+          "ann_volatility": 0.16341843488570415,
+          "sharpe": -0.4662235224447507,
+          "sortino": -0.6196007733471867,
+          "max_drawdown": -0.12106343658623508,
+          "hit_rate": 0.4166666666666667,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "JNJ_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "XOM",
+      "status": "ok",
+      "configuration_sha256": "05c22886750decbc2263f75b9869c7643bfacee0c5552f9b8faf948ef8dabcf7",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "3b07b8c5973063a48d4acfff51a47c9aa1c402d64847f4653558bf26157d93ce",
+        "snapshot": "prices/XOM.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-28af406ca1217f242ec978d8755271b71e1bd4b0d7b5b40e2bd45b95c6ecc352",
+      "data_fingerprint": "ec4030518b07c862185c5f95d312d0c795d04ded4c735bd2bbcc347330389597",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.015321418507143969,
+        "excess_sharpe_vs_bh": -0.03928899779580683,
+        "excess_cagr_vs_rf": 0.011608036434609614,
+        "skill_vs_bh": 0.755141287766242,
+        "max_drawdown": -0.14469067075633424,
+        "turnover_annual": 3.4060056720767893,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 1.656622341866576,
+          "cagr": 0.051608036434610094,
+          "ann_volatility": 0.0749327779672466,
+          "sharpe": 0.18579321297272627,
+          "sortino": 0.27646021312663704,
+          "max_drawdown": -0.14469067075633424,
+          "hit_rate": 0.7982832618025751,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 2.518046734969347,
+          "cagr": 0.06692945494175406,
+          "ann_volatility": 0.22809922238050775,
+          "sharpe": 0.2250822107685331,
+          "sortino": 0.34405817872958416,
+          "max_drawdown": -0.5839595115828311,
+          "hit_rate": 0.5364806866952789,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.05851285989512345,
+        "excess_sharpe_vs_bh": 0.16252400748240514,
+        "excess_cagr_vs_rf": 0.014103282031163733,
+        "skill_vs_bh": 0.9474096611668609,
+        "max_drawdown": -0.0064316031459685785,
+        "turnover_annual": 3.4573392967424432,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": 0.05410328203116399,
+          "cagr": 0.05410328203116399,
+          "ann_volatility": 0.020580897757423146,
+          "sharpe": 0.6663772535856719,
+          "sortino": 1.231321659299054,
+          "max_drawdown": -0.0064316031459685785,
+          "hit_rate": 0.8333333333333334,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.11261614192628744,
+          "cagr": 0.11261614192628744,
+          "ann_volatility": 0.15697819286600126,
+          "sharpe": 0.5038532461032668,
+          "sortino": 0.8355380319348273,
+          "max_drawdown": -0.08808074581911718,
+          "hit_rate": 0.5833333333333334,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "XOM_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "JPM",
+      "status": "ok",
+      "configuration_sha256": "a8a963807331353c0b2994c9350d4998c01eb3b69078e67263e11c1b17e28853",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "cf670b42d2d12f9b7d3eceb22a891ac8dd33df29d592d6a1d2244d95a0fc2792",
+        "snapshot": "prices/JPM.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-fa8b81f2846c1cdd6e64e27d605a7f32308a3c5ac7f6a5204c4e9c64244de181",
+      "data_fingerprint": "82c2c794ff9fc502c0074a14c9fe20370a837f1edd58d6b43033d53ba9fdadaf",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.06218356437743955,
+        "excess_sharpe_vs_bh": -0.03587679733657406,
+        "excess_cagr_vs_rf": 0.031114499316888145,
+        "skill_vs_bh": 0.3342962525956477,
+        "max_drawdown": -0.14414427224095194,
+        "turnover_annual": 2.621890361366345,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 2.795890632410911,
+          "cagr": 0.07111449931688862,
+          "ann_volatility": 0.07827824350527762,
+          "sharpe": 0.41714855783592153,
+          "sortino": 0.6495482524107792,
+          "max_drawdown": -0.14414427224095194,
+          "hit_rate": 0.8025751072961373,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 10.35487042686739,
+          "cagr": 0.13329806369432817,
+          "ann_volatility": 0.27451944412470347,
+          "sharpe": 0.4530253551724956,
+          "sortino": 0.6877395151988783,
+          "max_drawdown": -0.5325911379377752,
+          "hit_rate": 0.5708154506437768,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.35082477890696495,
+        "excess_sharpe_vs_bh": -1.0485986157722187,
+        "excess_cagr_vs_rf": 0.052056655301854216,
+        "skill_vs_bh": 0.7568582070644397,
+        "max_drawdown": -0.021302062858328252,
+        "turnover_annual": 2.98704416405216,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": 0.09205665530185447,
+          "cagr": 0.09205665530185447,
+          "ann_volatility": 0.06771366145140452,
+          "sharpe": 0.7557481606940631,
+          "sortino": 1.560138054602233,
+          "max_drawdown": -0.021302062858328252,
+          "hit_rate": 0.75,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.4428814342088194,
+          "cagr": 0.4428814342088194,
+          "ann_volatility": 0.19394428800245223,
+          "sharpe": 1.804346776466282,
+          "sortino": 3.9617424084813733,
+          "max_drawdown": -0.06201070281232268,
+          "hit_rate": 0.6666666666666666,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "JPM_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "SPY",
+      "status": "ok",
+      "configuration_sha256": "0b32712992f5afe9cc8af81d8354234d48e563072085bd68e672609de616f328",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "51a76dcbc4010f36fd2bba7003ebf9e57c3ac1385ea8abe3bf1ff6b7c1b8d345",
+        "snapshot": "prices/SPY.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-a6839b26b0bd5eaaa31ff3cf4d9b8fbc5d0b69050967a68a18a40a292110a2b8",
+      "data_fingerprint": "5ea09388fbf04f83675234db3bb597a196bea23707dfc8e32f8c4c8444b53a74",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.04533953440516503,
+        "excess_sharpe_vs_bh": -0.1955997065895539,
+        "excess_cagr_vs_rf": 0.018763031513039152,
+        "skill_vs_bh": 0.4430062683764796,
+        "max_drawdown": -0.13806621877965342,
+        "turnover_annual": 4.029915674349655,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 2.0304660779699812,
+          "cagr": 0.05876303151303963,
+          "ann_volatility": 0.07461523767619821,
+          "sharpe": 0.27793165766071165,
+          "sortino": 0.39252216837133896,
+          "max_drawdown": -0.13806621877965342,
+          "hit_rate": 0.8283261802575107,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 5.840684419829931,
+          "cagr": 0.10410256591820466,
+          "ann_volatility": 0.15141657359556585,
+          "sharpe": 0.47353136425026554,
+          "sortino": 0.6801757162823856,
+          "max_drawdown": -0.5078479814001903,
+          "hit_rate": 0.6652360515021459,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.2063471066096665,
+        "excess_sharpe_vs_bh": -1.7142208243935764,
+        "excess_cagr_vs_rf": 0.0025175228483023115,
+        "skill_vs_bh": 0.8347722389261476,
+        "max_drawdown": -0.02531328693587731,
+        "turnover_annual": 3.9668479886623333,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": 0.04251752284830257,
+          "cagr": 0.04251752284830257,
+          "ann_volatility": 0.05707408154866784,
+          "sharpe": 0.06843601754204869,
+          "sortino": 0.11146128633151614,
+          "max_drawdown": -0.02531328693587731,
+          "hit_rate": 0.75,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.24886462945796906,
+          "cagr": 0.24886462945796906,
+          "ann_volatility": 0.1066945081892974,
+          "sharpe": 1.782656841935625,
+          "sortino": 3.596807594674179,
+          "max_drawdown": -0.04031973769006114,
+          "hit_rate": 0.75,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "SPY_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    },
+    {
+      "ticker": "PG",
+      "status": "ok",
+      "configuration_sha256": "2578906c9f76c872ed0a1bc635d2859fb51c0c3c460595469c24cdd565c6bbd8",
+      "source": {
+        "mode": "download",
+        "label": "yfinance fresh auto_adjust=True",
+        "adjusted_close": "provider-adjusted",
+        "sha256": "01d19c81a8ae4b6c36909a68fccc6c60b1cb771ca51562475f2f482a67047375",
+        "snapshot": "prices/PG.csv"
+      },
+      "observed_daily_range": [
+        "2005-01-03",
+        "2024-12-31"
+      ],
+      "variant_id": "sim-v2-f3025a94b179a3652c1bc96aa4337c1f02c378861f52518351da2c659018fa18",
+      "data_fingerprint": "264b5fc9ecfda45e728a940ed9d4814a3263a39024af19ed3a65c97f809f7630",
+      "monthly_observations": 240,
+      "scorecard": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.005876339482119963,
+        "excess_sharpe_vs_bh": 0.13584392686083802,
+        "excess_cagr_vs_rf": 0.04236154671495718,
+        "skill_vs_bh": 0.9002061239639123,
+        "max_drawdown": -0.12055398722616517,
+        "turnover_annual": 3.2614323448440934,
+        "n_periods": 233,
+        "strategy": {
+          "total_return": 3.6493961502459253,
+          "cagr": 0.08236154671495766,
+          "ann_volatility": 0.08706142464801477,
+          "sharpe": 0.5039334255588128,
+          "sortino": 0.8182371017141338,
+          "max_drawdown": -0.12055398722616517,
+          "hit_rate": 0.8025751072961373,
+          "n_periods": 233.0
+        },
+        "buy_and_hold": {
+          "total_return": 4.164812842833217,
+          "cagr": 0.08823788619707762,
+          "ann_volatility": 0.15705370476625125,
+          "sharpe": 0.3680894986979748,
+          "sortino": 0.5659890939577826,
+          "max_drawdown": -0.3440431671859516,
+          "hit_rate": 0.575107296137339,
+          "n_periods": 233.0
+        },
+        "risk_free": {
+          "total_return": 1.1415620950909973,
+          "cagr": 0.04000000000000048,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 233.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "final_period": {
+        "beat_buy_and_hold": false,
+        "beat_risk_free": true,
+        "excess_cagr_vs_bh": -0.10838848329935757,
+        "excess_sharpe_vs_bh": -0.5513840859963701,
+        "excess_cagr_vs_rf": 0.024149552675166053,
+        "skill_vs_bh": 0.9075607954932794,
+        "max_drawdown": -0.0422590349597427,
+        "turnover_annual": 2.7003790964506407,
+        "n_periods": 12,
+        "strategy": {
+          "total_return": 0.06414955267516631,
+          "cagr": 0.06414955267516631,
+          "ann_volatility": 0.0937053289809596,
+          "sharpe": 0.2885404943879825,
+          "sortino": 0.4803978261383001,
+          "max_drawdown": -0.0422590349597427,
+          "hit_rate": 0.75,
+          "n_periods": 12.0
+        },
+        "buy_and_hold": {
+          "total_return": 0.17253803597452388,
+          "cagr": 0.17253803597452388,
+          "ann_volatility": 0.15730164363215565,
+          "sharpe": 0.8399245803843526,
+          "sortino": 1.5706265626309128,
+          "max_drawdown": -0.06476629062643346,
+          "hit_rate": 0.75,
+          "n_periods": 12.0
+        },
+        "risk_free": {
+          "total_return": 0.04000000000000026,
+          "cagr": 0.04000000000000026,
+          "ann_volatility": 0.0,
+          "sharpe": null,
+          "sortino": null,
+          "max_drawdown": 0.0,
+          "hit_rate": 1.0,
+          "n_periods": 12.0
+        },
+        "disclaimer": "Educational demo \u2014 not financial advice."
+      },
+      "warnings": [
+        "Educational demo \u2014 not financial advice.",
+        "risk-free benchmark uses a constant 4.00% annual rate (default), not a point-in-time T-bill series"
+      ],
+      "metrics": "PG_SIM_metrics.json",
+      "evaluation_range": [
+        "2005-07-31",
+        "2024-12-31"
+      ],
+      "final_period_range": [
+        "2023-12-31",
+        "2024-12-31"
+      ]
+    }
+  ],
+  "disclaimer": "Educational demo \u2014 not financial advice.",
+  "attempted": 8,
+  "succeeded": 8,
+  "failed": 0,
+  "completed_at_utc": "2026-10-28T06:23:15.965034+00:00",
+  "evidence_archive": {
+    "source_summary_sha256": "56e3abed93ec46ba4c0939ffa1fe4641a6ce181945a65f1ec8a23d888cb25b98",
+    "raw_price_snapshots_embedded": false,
+    "local_run_directory": "/tmp/stockpredictor-results-review-network",
+    "note": "Original run manifest plus evaluation ranges from its per-ticker artifacts. Raw CSV snapshots and equity arrays are retained locally, not embedded in this evidence file."
+  }
+}

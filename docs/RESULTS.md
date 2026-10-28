@@ -1,3 +1,143 @@
+# Corrected monthly study results
+
+> **Educational demo — not financial advice.** Recomputed October 27, 2026
+> (America/Phoenix) with corrected holdings and transaction-cost accounting.
+> All eight requested tickers completed: **beat buy-and-hold 0/8; beat the configured
+> 4% risk-free benchmark 7/8**. These are descriptive historical results, not a new
+> independent holdout or evidence that an edge is impossible.
+
+The prior numerical report is superseded and preserved in the labeled archive below,
+including its unchanged pre-registration. Its simulator did not charge all trades
+needed to restore fractional weights after market movements. Fresh input data and
+corrected complete-month boundaries also differ from the historical run; differences
+between the two reports cannot be attributed to accounting alone.
+
+## Recorded method and evidence
+
+The full-precision scorecards, final-period metrics, configuration, per-ticker source
+hashes, data fingerprints, variant IDs, warnings, and dependency versions are in
+[`results/monthly-study-corrected.json`](results/monthly-study-corrected.json).
+All eight input snapshots passed the script's monthly completeness checks. There were
+no failed or excluded tickers in this run.
+
+| Item | Recorded value |
+|---|---|
+| Requested tickers | AAPL, MSFT, KO, JNJ, XOM, JPM, SPY, PG |
+| Requested prices | `[2005-01-01, 2025-01-01)`; end exclusive |
+| Observed daily range | 2005-01-03–2024-12-31 for all eight |
+| Monthly observations | 240 per ticker |
+| Equity evaluation range | 2005-07-31–2024-12-31; 233 monthly returns after warmup |
+| Signal / sizing | Price-only Holt-Winters; volatility target 10% annualized |
+| Costs | Commission 1 bps + half of 5 bps full spread + 5 bps slippage |
+| Initial capital / fixed fee | 10,000 / 0 currency units |
+| Cash benchmark | Constant 4% annual rate, not historical T-bill yields |
+| Acquisition | Fresh yfinance download with `auto_adjust=True`; no SQLite cache or news |
+| Recorded UTC acquisition/run interval | 2026-10-28 06:22:26–06:23:15 UTC (October 27 in Phoenix) |
+| Environment | Python 3.12.12; NumPy 2.5.3; pandas 3.0.6; statsmodels 0.15.0; yfinance 1.7.0 |
+| Earlier experiments | Unknown; this run does not establish a total variant count |
+
+Package source identity:
+`sha256:b6e15ddae37db637ed33822111e58079fa750c7a2b95ee2fa8b54bc26bad8cfa`.
+The regeneration-script hash and original manifest hash are retained in the JSON.
+The package was identified by source content, including local changes, rather than a
+claim that an uncommitted run used an already released commit.
+
+Raw price CSVs and the detailed equity arrays were retained locally under
+`/tmp/stockpredictor-results-review-network/`; they are **not embedded in the repository
+evidence JSON**. Its relative snapshot/artifact paths refer to that local run directory.
+The evidence file records their identities, but public readers need those snapshots
+for byte-identical replay. A new download is a new data vintage.
+
+## Full-period readings — all eight tickers
+
+“Beat” compares CAGR after costs. Excess CAGR is in percentage points (pp); turnover
+is annual traded notional divided by equity, and maximum drawdown is for the strategy.
+
+| Ticker | Strategy CAGR | BH CAGR | Excess CAGR vs BH | Excess Sharpe vs BH | Max drawdown | Turnover | Beat BH / RF? |
+|---|---|---|---|---|---|---|---|
+| AAPL | 10.14% | 31.19% | -21.05 pp | -0.077 | -15.11% | 1.25x | NO / YES |
+| MSFT | 7.51% | 17.67% | -10.16 pp | -0.219 | -18.49% | 2.68x | NO / YES |
+| KO | 6.45% | 8.80% | -2.35 pp | -0.050 | -16.00% | 4.32x | NO / YES |
+| JNJ | 4.00%† | 7.34% | -3.34 pp | -0.245 | -14.30% | 3.94x | NO / NO |
+| XOM | 5.16% | 6.69% | -1.53 pp | -0.039 | -14.47% | 3.41x | NO / YES |
+| JPM | 7.11% | 13.33% | -6.22 pp | -0.036 | -14.41% | 2.62x | NO / YES |
+| SPY | 5.88% | 10.41% | -4.53 pp | -0.196 | -13.81% | 4.03x | NO / YES |
+| PG | 8.24% | 8.82% | -0.59 pp | +0.136 | -12.06% | 3.26x | NO / YES |
+
+† JNJ's unrounded CAGR is **3.999945%**, slightly below 4%; the rounded table is not
+a tie. Across these eight selected survivors, the strategy ended behind buy-and-hold
+on CAGR in every case. That finding is limited to this configuration, sample, and
+simplified cost assumptions. It does not validate the earlier band-to-move explanation:
+that diagnostic was not regenerated here. PG's positive excess Sharpe does not change
+its lower CAGR relative to buy-and-hold.
+
+![Corrected AAPL simulation: strategy, buy-and-hold, and risk-free equity](images/equity-curve.png)
+
+## Final-period readings — descriptive only
+
+The final 12 returns span equity timestamps 2023-12-31–2024-12-31. They are already
+included above and can be inspected on every rerun. No separate protected evaluation
+was conducted; correcting code does not make previously viewed periods unseen.
+
+| Ticker | Strategy return/CAGR | BH return/CAGR | Beat BH / RF? |
+|---|---|---|---|
+| AAPL | +8.18% | +30.71% | NO / YES |
+| MSFT | +2.13% | +12.93% | NO / NO |
+| KO | -0.25% | +8.88% | NO / NO |
+| JNJ | -7.31% | -4.81% | NO / NO |
+| XOM | +5.41% | +11.26% | NO / YES |
+| JPM | +9.21% | +44.29% | NO / YES |
+| SPY | +4.25% | +24.89% | NO / YES |
+| PG | +6.41% | +17.25% | NO / YES |
+
+These are one-year returns, so return and CAGR coincide. Twelve observations provide
+limited support for risk-adjusted inference. The final-period values neither establish
+an independent replication nor justify a once-only validation claim. Future claims
+need a separately protected dataset or evaluation procedure, frozen settings, and a
+record of all attempted variants. Selection of long-lived names, adjusted-price
+revisions, constant risk-free rates, monthly sampling, and simplified fills remain
+limitations.
+
+## Regenerate the monthly study
+
+From the checkout root, provide one `TICKER.csv` per requested ticker, with `Date`
+(`YYYY-MM-DD`) and `Close` columns. **Close must already be split/dividend adjusted.**
+Keep the provenance and adjustment date of those snapshots. The default universe is
+AAPL, MSFT, KO, JNJ, XOM, JPM, SPY, PG; the default requested window is
+`[2005-01-01, 2025-01-01)`, which includes the complete December 2024 month.
+
+```bash
+# Offline replay; no price cache or news requests are used.
+python -m scripts.regenerate_results \
+  --prices-dir /path/to/adjusted-price-snapshots \
+  --source-label "provider and snapshot acquisition date" \
+  --outdir stock_plots/regenerated-study-01
+
+# Explicit alternative: fetch fresh adjusted prices and retain their CSV snapshots.
+python -m scripts.regenerate_results --download \
+  --outdir stock_plots/regenerated-study-fresh-01
+```
+
+Use a new output directory for every run. `summary.json` lists **every requested
+ticker**, including errors, actual input date ranges, data and configuration identities,
+source snapshots, code hashes, dependency versions, and final-period metrics. Per-ticker
+`TICKER_SIM_metrics.json` files contain results or an explicit error. Undefined metrics
+are JSON `null`. Any ticker failure gives a nonzero exit status; an interrupted run
+keeps a visibly incomplete summary. Shorter source coverage is flagged, not concealed.
+
+The script deliberately does not read the legacy SQLite cache or claim knowledge of
+past experiments. Its retained `prices/` directory can be used as the next offline
+input. Follow [`RESULTS_TEMPLATE.md`](RESULTS_TEMPLATE.md) when interpreting the new
+artifacts, report every failure and every attempted configuration, and record the
+actual post-warmup evaluation dates. Fresh downloads may revise historical adjusted
+prices; exact replay requires the retained CSV snapshots. This script regenerates the
+monthly trading study, not the separate Phase 5 predictability screen.
+
+## Historical archive — numerical results invalidated
+
+<details>
+<summary>Original report and unchanged pre-registration (superseded)</summary>
+
 # Results: Does the Simulated Betting Layer Beat Buy-and-Hold After Costs?
 
 > ⚠️ **Educational demo — not financial advice.** This is a paper-trading study. No
@@ -164,3 +304,5 @@ clearest finding is conceptual: the one-step prediction band dwarfs the expected
 (~5×), which is precisely why a well-calibrated forecast is not, by itself, a tradeable
 edge. Extending beyond this null (short-horizon signals, a point-in-time universe) is
 gated Phase 5 and not undertaken here.
+
+</details>

@@ -66,3 +66,97 @@ def test_to_monthly_invalid_agg_raises():
     df = pd.DataFrame({"Close": [1.0, 2.0]}, index=pd.date_range("2020-01-01", periods=2))
     with pytest.raises(ValueError):
         data.to_monthly(df, "TST", agg="median")
+
+
+def test_validate_close_rejects_infinities():
+    clean, warns = data.validate_close(pd.Series([10.0, np.inf, -np.inf, 11.0]))
+    assert clean.tolist() == [10.0, 11.0]
+    assert any("non-finite" in warning for warning in warns)
+
+
+def test_partial_month_is_excluded_at_exclusive_end():
+    frame = pd.DataFrame(
+        {"Close": [100.0, 110.0, 999.0]},
+        index=pd.to_datetime(["2024-09-30", "2024-10-15", "2024-10-16"]),
+    )
+    monthly, warns = data.to_monthly(frame, "TEST", end="2024-10-16")
+    assert monthly.index.tolist() == [pd.Timestamp("2024-09-30")]
+    assert monthly.tolist() == [100.0]
+    assert any("incomplete month" in warning for warning in warns)
+
+
+def test_calendar_month_can_end_after_its_last_trading_day():
+    # March 2024 ended on Sunday; Friday was a market holiday.
+    frame = pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2024-03-28"]))
+    monthly, warns = data.to_monthly(frame, "TEST", end="2024-04-01")
+    assert monthly.index.tolist() == [pd.Timestamp("2024-03-31")]
+    assert monthly.tolist() == [100.0]
+    assert warns == []
+
+
+def test_month_end_itself_is_excluded_by_exclusive_end():
+    frame = pd.DataFrame(
+        {"Close": [100.0, 105.0, 110.0]},
+        index=pd.to_datetime(["2024-01-31", "2024-02-28", "2024-02-29"]),
+    )
+    monthly, _ = data.to_monthly(frame, "TEST", end="2024-02-29")
+    assert monthly.index.tolist() == [pd.Timestamp("2024-01-31")]
+
+
+def test_missing_months_are_not_compressed():
+    frame = pd.DataFrame(
+        {"Close": [100.0, 110.0]}, index=pd.to_datetime(["2024-01-31", "2024-03-31"])
+    )
+    with pytest.raises(ValueError, match="missing monthly prices for 2024-02"):
+        data.to_monthly(frame, "TEST", end="2024-04-01")
+
+
+def test_unusable_month_is_reported_as_a_gap():
+    frame = pd.DataFrame(
+        {"Close": [100.0, np.inf, 110.0]},
+        index=pd.to_datetime(["2024-01-31", "2024-02-29", "2024-03-31"]),
+    )
+    with pytest.raises(ValueError, match="missing monthly prices for 2024-02"):
+        data.to_monthly(frame, "TEST", end="2024-04-01")
+
+
+def test_truncated_download_cannot_hide_missing_complete_trailing_months():
+    frame = pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2024-01-31"]))
+    with pytest.raises(ValueError, match="missing monthly prices for 2024-02, 2024-03"):
+        data.to_monthly(frame, "TEST", end="2024-04-01")
+
+
+def test_exchange_local_dates_survive_timezone_conversion():
+    frame = pd.DataFrame(
+        {"Close": [100.0, 110.0]},
+        index=pd.DatetimeIndex(["2024-01-31", "2024-02-29"], tz="Asia/Tokyo"),
+    )
+    monthly, _ = data.to_monthly(frame, "TEST", end="2024-03-01")
+    assert monthly.index.tolist() == [pd.Timestamp("2024-01-31"), pd.Timestamp("2024-02-29")]
+
+
+def test_duplicate_price_dates_are_rejected():
+    frame = pd.DataFrame(
+        {"Close": [100.0, 110.0]}, index=pd.to_datetime(["2024-01-31", "2024-01-31"])
+    )
+    with pytest.raises(ValueError, match="duplicate dates"):
+        data.to_monthly(frame, "TEST", end="2024-02-01")
+
+
+def test_empty_daily_frame_has_a_clear_error_without_end():
+    frame = pd.DataFrame({"Close": []}, index=pd.DatetimeIndex([]))
+    with pytest.raises(ValueError, match="daily prices must not be empty"):
+        data.to_monthly(frame, "TEST")
+
+
+def test_monthly_validation_accepts_timezone_aware_calendar_months():
+    monthly = pd.Series(
+        [100.0, 110.0, 120.0],
+        index=pd.date_range("2024-01-31", periods=3, freq="ME", tz="America/New_York"),
+    )
+    data.validate_monthly(monthly)
+
+
+def test_monthly_validation_rejects_empty_prices():
+    with pytest.raises(ValueError, match="monthly prices must not be empty"):
+        data.validate_monthly(pd.Series([], index=pd.DatetimeIndex([]), dtype=float))

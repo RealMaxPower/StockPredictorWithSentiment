@@ -160,7 +160,7 @@ def write_equity_html(result: SimulationResult, ticker: str, out_dir: str) -> st
         logger.info("%s: plotly not installed; skipping equity HTML", ticker)
         return None
     path = os.path.join(out_dir, f"{ticker}_SIM_equity.html")
-    fig.write_html(path, include_plotlyjs="cdn")
+    fig.write_html(path, include_plotlyjs=True)
     logger.info("%s: saved interactive equity chart %s", ticker, path)
     return path
 
@@ -214,7 +214,7 @@ def write_interactive_html(
         logger.info("%s: plotly not installed; skipping interactive HTML", ticker)
         return None
     path = os.path.join(out_dir, f"{ticker}_forecast.html")
-    fig.write_html(path, include_plotlyjs="cdn")
+    fig.write_html(path, include_plotlyjs=True)
     logger.info("%s: saved interactive chart %s", ticker, path)
     return path
 

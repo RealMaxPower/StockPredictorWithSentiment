@@ -85,7 +85,7 @@ def build_query(ticker: str) -> str:
 
 
 def _news_window(end_date: str | None, lookback_days: int) -> tuple[str, str]:
-    """[end - lookback, end] in YYYY-MM-DD, anchored to the forecast origin."""
+    """[end - lookback, end) in YYYY-MM-DD, matching the price end boundary."""
     if end_date:
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
     else:
@@ -104,6 +104,22 @@ def _normalize(art: dict) -> dict[str, object]:
     }
 
 
+def _in_window(article: dict, start: datetime, end: datetime) -> bool:
+    """Accept only known publication instants inside the requested UTC window."""
+    published = article.get("publishedAt")
+    if not isinstance(published, str):
+        return False
+    try:
+        # Python 3.10's fromisoformat does not accept the RFC 3339 Z suffix.
+        timestamp = datetime.fromisoformat(published.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    # Guessing a timezone could admit news published after the forecast origin.
+    if timestamp.tzinfo is None:
+        return False
+    return start <= timestamp < end
+
+
 def fetch_articles(
     client,
     ticker: str,
@@ -112,15 +128,18 @@ def fetch_articles(
     sleeper: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, object]]:
     """
-    Fetch normalized article dicts (no scoring) with retry/backoff. Tries the
-    anchored date window first, then falls back to no date filter if the plan
-    rejects the range (NewsAPI free tier ~30 days). Returns [] on exhaustion.
+    Fetch normalized article dicts with retry/backoff and a fixed historical
+    window. Unsupported ranges and empty responses return no news. Provider date
+    filters are also enforced locally using each article's publication timestamp.
     """
     cfg = cfg or config.AppConfig()
+    cfg.validate()
     query = build_query(ticker)
     # Untrusted ticker/query are echoed in log lines below; scrub once for logging.
     log_ticker, log_query = scrub(ticker), scrub(query)
     win_from, win_to = _news_window(end_date, cfg.news_lookback_days)
+    start = datetime.fromisoformat(win_from).replace(tzinfo=timezone.utc)
+    end = datetime.fromisoformat(win_to).replace(tzinfo=timezone.utc)
 
     days_old = (datetime.now(timezone.utc).date() - datetime.fromisoformat(win_to).date()).days
     if days_old > _FREE_TIER_DAYS:
@@ -134,8 +153,6 @@ def fetch_articles(
         )
 
     logger.info("%s: news query %s, window %s..%s", log_ticker, log_query, win_from, win_to)
-    tried_without_dates = False
-
     for attempt in range(cfg.max_retries):
         try:
             if attempt > 0:
@@ -148,46 +165,42 @@ def fetch_articles(
                 "language": "en",
                 "sort_by": "relevancy",
                 "page_size": cfg.page_size,
+                "from_param": win_from,
+                "to": win_to,
             }
-            if not tried_without_dates:
-                kwargs["from_param"] = win_from
-                kwargs["to"] = win_to
-
-            resp = client.get_everything(**kwargs)
+            resp = client.get_everything(**kwargs) or {}
 
             if resp.get("code"):
                 code, msg = resp.get("code", ""), resp.get("message", "")
                 logger.warning("%s: NewsAPI error (%s): %s", log_ticker, scrub(code), scrub(msg))
-                if (
-                    code == "parameterInvalid"
-                    and "far in the past" in msg
-                    and not tried_without_dates
-                ):
-                    tried_without_dates = True
-                    continue
+                if code == "parameterInvalid":
+                    logger.warning(
+                        "%s: requested news window unavailable; using no news", log_ticker
+                    )
+                    return []
                 if attempt == cfg.max_retries - 1:
                     return []
                 continue
 
             articles = (resp or {}).get("articles", []) or []
             if not articles:
-                if not tried_without_dates:
-                    tried_without_dates = True
-                    continue
-                if attempt < cfg.max_retries - 1:
-                    continue
-            else:
-                logger.info("%s: fetched %d articles", log_ticker, len(articles))
-                return [_normalize(a) for a in articles]
+                return []
+            aligned = [a for a in articles if isinstance(a, dict) and _in_window(a, start, end)]
+            if len(aligned) != len(articles):
+                logger.warning(
+                    "%s: excluded %d articles with missing, invalid, or out-of-window dates",
+                    log_ticker,
+                    len(articles) - len(aligned),
+                )
+            logger.info("%s: fetched %d time-aligned articles", log_ticker, len(aligned))
+            return [_normalize(a) for a in aligned]
 
         except Exception as exc:  # noqa: BLE001 - networking is best-effort
             msg = str(exc)
             logger.warning("%s: attempt %d failed: %s", log_ticker, attempt + 1, scrub(msg))
-            if (
-                "parameterInvalid" in msg or "too far in the past" in msg
-            ) and not tried_without_dates:
-                tried_without_dates = True
-                continue
+            if "parameterInvalid" in msg or "too far in the past" in msg:
+                logger.warning("%s: requested news window unavailable; using no news", log_ticker)
+                return []
             if attempt == cfg.max_retries - 1:
                 logger.error("%s: all news attempts failed; using no news", log_ticker)
                 return []

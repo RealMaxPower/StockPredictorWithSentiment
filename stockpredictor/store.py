@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import date, datetime, timedelta
+from dataclasses import asdict
+from datetime import datetime, timedelta
 
 import pandas as pd
 
 from .sanitize import scrub
+from .serialization import json_safe
 
 logger = logging.getLogger("stockpredictor.store")
 
@@ -22,6 +24,11 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS prices (
     ticker TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL,
     fetched_at TEXT, PRIMARY KEY (ticker, date)
+);
+CREATE TABLE IF NOT EXISTS price_snapshots (
+    ticker TEXT, start TEXT, "end" TEXT, auto_adjust INTEGER,
+    fetched_at TEXT NOT NULL, payload TEXT NOT NULL,
+    PRIMARY KEY (ticker, start, "end", auto_adjust)
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +68,22 @@ class Store:
         if "sentiment_model" not in cols:
             # Pre-existing rows stay NULL: which scorer produced them is unknown.
             self.conn.execute("ALTER TABLE runs ADD COLUMN sentiment_model TEXT")
+        sim_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(simulations)")}
+        for name in (
+            "configuration_json",
+            "start",
+            "end",
+            "data_fingerprint",
+            "code_version",
+            "execution_id",
+        ):
+            if name not in sim_cols:
+                self.conn.execute(f'ALTER TABLE simulations ADD COLUMN "{name}" TEXT')
+        # NULL preserves every legacy/uncached execution, including repeated variants.
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS simulations_execution_id "
+            "ON simulations(execution_id)"
+        )
 
     def close(self) -> None:
         self.conn.close()
@@ -72,65 +95,89 @@ class Store:
         self.close()
 
     # --- price cache ---------------------------------------------------------
-    def upsert_prices(self, ticker: str, df: pd.DataFrame) -> None:
-        fetched = datetime.now().isoformat(timespec="seconds")
-        n = len(df)
-        level0 = (
-            df.columns.get_level_values(0) if isinstance(df.columns, pd.MultiIndex) else df.columns
-        )
+    def upsert_prices(
+        self,
+        ticker: str,
+        df: pd.DataFrame,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        auto_adjust: bool = True,
+    ) -> None:
+        """Store one complete download, never merging different adjustment vintages.
 
-        def column(name: str) -> list:
-            """Per-row list of python floats (or None) for an OHLCV column."""
-            if name not in level0:
-                return [None] * n
-            series = df[name].iloc[:, 0] if isinstance(df.columns, pd.MultiIndex) else df[name]
-            return [None if pd.isna(x) else float(x) for x in series]
-
-        if "Close" not in level0:
+        Coverage comes from the requested interval, not the first/last trading day
+        (weekends, holidays and IPOs make those misleading). Old row-only caches
+        cannot establish coverage and are deliberately not used as cache hits.
+        """
+        if start is None or end is None or df is None or df.empty:
             return
-        dates = [pd.Timestamp(i).strftime("%Y-%m-%d") for i in df.index]
-        rows = list(
-            zip(
-                [ticker] * n,
-                dates,
-                column("Open"),
-                column("High"),
-                column("Low"),
-                column("Close"),
-                column("Volume"),
-                [fetched] * n,
-                strict=True,
-            )
+        fetched = datetime.now().isoformat(timespec="microseconds")
+        # Do not promise coverage of future days that have not been downloaded.
+        covered_end = min(end, datetime.now().date().isoformat())
+        if covered_end <= start:
+            return
+        payload = {
+            "columns": df.columns.tolist(),
+            "column_names": list(df.columns.names),
+            "multiindex": isinstance(df.columns, pd.MultiIndex),
+            "index": [pd.Timestamp(i).isoformat() for i in df.index],
+            "index_name": df.index.name,
+            "index_tz": str(df.index.tz) if df.index.tz is not None else None,
+            "data": df.to_dict(orient="split")["data"],
+        }
+        self.conn.execute(
+            "INSERT OR REPLACE INTO price_snapshots VALUES (?,?,?,?,?,?)",
+            (
+                ticker.upper(),
+                start,
+                covered_end,
+                int(auto_adjust),
+                fetched,
+                json.dumps(json_safe(payload), allow_nan=False),
+            ),
         )
-        self.conn.executemany("INSERT OR REPLACE INTO prices VALUES (?,?,?,?,?,?,?,?)", rows)
         self.conn.commit()
 
     def cached_prices(
-        self, ticker: str, start: str, end: str, ttl_days: int = 1
+        self, ticker: str, start: str, end: str, ttl_days: int = 1, *, auto_adjust: bool = True
     ) -> pd.DataFrame | None:
+        """Return a fresh, fully covering snapshot sliced to ``[start, end)``.
+
+        All snapshots expire, including historical prices: later corporate actions
+        can revise adjusted history. Expanded ranges are downloaded together rather
+        than spliced to older cached prices.
+        """
         cur = self.conn.execute(
-            "SELECT * FROM prices WHERE ticker=? AND date BETWEEN ? AND ? ORDER BY date",
-            (ticker, start, end),
+            'SELECT * FROM price_snapshots WHERE ticker=? AND start<=? AND "end">=? '
+            "AND auto_adjust=? ORDER BY fetched_at DESC",
+            (ticker.upper(), start, end, int(auto_adjust)),
         )
-        rows = cur.fetchall()
-        if not rows:
+        snapshot = cur.fetchone()
+        if snapshot is None:
             return None
-        end_dt = datetime.strptime(end, "%Y-%m-%d").date()
-        immutable = end_dt < (date.today() - timedelta(days=7))
-        if not immutable:
-            newest = max(datetime.fromisoformat(r["fetched_at"]) for r in rows)
-            if datetime.now() - newest > timedelta(days=ttl_days):
-                return None  # stale near-today data; refetch
-        idx = pd.to_datetime([r["date"] for r in rows])
-        data = {
-            "Open": [r["open"] for r in rows],
-            "High": [r["high"] for r in rows],
-            "Low": [r["low"] for r in rows],
-            "Close": [r["close"] for r in rows],
-            "Volume": [r["volume"] for r in rows],
-        }
-        logger.info("%s: price cache hit (%d rows)", scrub(ticker), len(rows))
-        return pd.DataFrame(data, index=idx)
+        if datetime.now() - datetime.fromisoformat(snapshot["fetched_at"]) > timedelta(
+            days=ttl_days
+        ):
+            return None
+        payload = json.loads(snapshot["payload"])
+        columns = (
+            pd.MultiIndex.from_tuples(payload["columns"], names=payload["column_names"])
+            if payload["multiindex"]
+            else pd.Index(payload["columns"], name=payload["column_names"][0])
+        )
+        idx = (
+            pd.to_datetime(payload["index"], utc=True).tz_convert(payload["index_tz"])
+            if payload.get("index_tz")
+            else pd.DatetimeIndex(payload["index"])
+        )
+        idx.name = payload["index_name"]
+        frame = pd.DataFrame(payload["data"], columns=columns, index=idx)
+        # Compare exchange-local dates, also handling timezone-aware daily frames.
+        dates = frame.index.strftime("%Y-%m-%d")
+        frame = frame.loc[(dates >= start) & (dates < end)]
+        logger.info("%s: price cache hit (%d rows)", scrub(ticker), len(frame))
+        return frame
 
     # --- run history ---------------------------------------------------------
     def save_run(self, result, run_date: str, cfg) -> int:
@@ -154,9 +201,15 @@ class Store:
                 result.sentiment.n_articles,
                 result.sentiment.label(),
                 json.dumps(
-                    {k: payload[k] for k in ("forecast", "adjusted", "intervals", "horizon_index")}
+                    json_safe(
+                        {
+                            k: payload[k]
+                            for k in ("forecast", "adjusted", "intervals", "horizon_index")
+                        }
+                    ),
+                    allow_nan=False,
                 ),
-                json.dumps(result.backtest),
+                json.dumps(json_safe(result.backtest), allow_nan=False),
                 getattr(result, "sentiment_model", None),
             ),
         )
@@ -189,19 +242,32 @@ class Store:
         )
 
     # --- simulation history (multiple-testing accounting) --------------------
-    def save_simulation(self, ticker: str, variant_id: str, scorecard, cfg) -> int:
+    def save_simulation(
+        self,
+        ticker: str,
+        variant_id: str,
+        scorecard,
+        cfg,
+        *,
+        configuration: dict | None = None,
+        data_fingerprint: str | None = None,
+        code_version: str | None = None,
+        execution_id: str | None = None,
+    ) -> int:
         """Log one paper-trading run so the best-of-N overfit warning can be honest.
 
-        Every strategy/parameter variant tried accumulates a row here; ``count_
-        simulations`` reads them back so the reporting layer can say how many were
-        attempted (brief §3.5).
+        A supplied execution identity makes retries/cache renders idempotent, even
+        across connections. Omit it to record every invocation as a separate run.
+        Distinct variants and executions are counted separately.
         """
         run_date = datetime.now().isoformat(timespec="seconds")
         cur = self.conn.execute(
             "INSERT INTO simulations (ticker, run_date, variant_id, sizing_method, "
             "rf_annual, beat_bh, beat_rf, excess_cagr_vs_bh, excess_sharpe_vs_bh, "
-            "strategy_cagr, max_drawdown, turnover_annual, scorecard_json) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "strategy_cagr, max_drawdown, turnover_annual, scorecard_json, "
+            'configuration_json, start, "end", data_fingerprint, code_version, execution_id) '
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(execution_id) DO NOTHING",
             (
                 ticker.upper(),
                 run_date,
@@ -215,19 +281,42 @@ class Store:
                 scorecard.strategy.cagr,
                 scorecard.max_drawdown,
                 scorecard.turnover_annual,
-                json.dumps(scorecard.as_dict()),
+                json.dumps(json_safe(scorecard.as_dict()), allow_nan=False),
+                json.dumps(
+                    json_safe(configuration if configuration is not None else asdict(cfg)),
+                    sort_keys=True,
+                    allow_nan=False,
+                ),
+                cfg.start,
+                cfg.end,
+                data_fingerprint,
+                code_version,
+                execution_id,
             ),
         )
         self.conn.commit()
+        if execution_id is not None:
+            row = self.conn.execute(
+                "SELECT id FROM simulations WHERE execution_id=?", (execution_id,)
+            ).fetchone()
+            return int(row["id"])
         return int(cur.lastrowid or 0)
 
     def count_simulations(self, ticker: str) -> int:
-        """How many simulation variants have been logged for this ticker (≥ 1)."""
+        """Number of distinct experiment identities, not repeated executions."""
         cur = self.conn.execute(
-            "SELECT COUNT(*) AS n FROM simulations WHERE ticker=?", (ticker.upper(),)
+            "SELECT COUNT(DISTINCT variant_id) AS n FROM simulations WHERE ticker=?",
+            (ticker.upper(),),
         )
         row = cur.fetchone()
         return int(row["n"]) if row else 0
+
+    def count_simulation_runs(self, ticker: str) -> int:
+        """Number of executions, including repeated runs of the same variant."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM simulations WHERE ticker=?", (ticker.upper(),)
+        ).fetchone()
+        return int(row["n"])
 
     def simulation_history(self, ticker: str) -> pd.DataFrame:
         return pd.read_sql_query(
@@ -243,14 +332,20 @@ def make_cached_downloader(store: Store, base_downloader, ttl_days: int = 1):
     """Wrap a downloader so prices are served from SQLite when fresh enough."""
 
     def _dl(ticker, start=None, end=None, progress=False, auto_adjust=True):
-        cached = store.cached_prices(ticker, start, end, ttl_days=ttl_days)
-        if cached is not None and len(cached):
-            return cached
+        if start is not None and end is not None:
+            try:
+                cached = store.cached_prices(
+                    ticker, start, end, ttl_days=ttl_days, auto_adjust=auto_adjust
+                )
+                if cached is not None and len(cached):
+                    return cached
+            except Exception as exc:  # noqa: BLE001 - cache failure must not block a download
+                logger.warning("%s: could not read cached prices: %s", scrub(ticker), scrub(exc))
         df = base_downloader(
             ticker, start=start, end=end, progress=progress, auto_adjust=auto_adjust
         )
         try:
-            store.upsert_prices(ticker, df)
+            store.upsert_prices(ticker, df, start=start, end=end, auto_adjust=auto_adjust)
         except Exception as exc:  # noqa: BLE001 - caching must never break a run
             logger.warning("%s: could not cache prices: %s", scrub(ticker), scrub(exc))
         return df

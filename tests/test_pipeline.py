@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
+
+import numpy as np
+import pandas as pd
 
 from stockpredictor import pipeline
 
@@ -59,3 +63,17 @@ def test_run_ticker_records_which_scorer_ran(cfg, fake_downloader, fake_news_cli
         scorer=Anonymous(),
     )
     assert injected.sentiment_model is None  # unknown, so not guessed from cfg
+
+
+def test_short_series_metrics_are_strict_json(cfg):
+    cfg = replace(cfg, start="2020-01-01", end="2020-07-01")
+    frame = pd.DataFrame(
+        {"Close": np.arange(100.0, 106.0)}, index=pd.date_range("2020-01-31", periods=6, freq="ME")
+    )
+    result = pipeline.run_ticker("TEST", cfg, price_downloader=lambda *a, **kw: frame)
+    payload = pipeline.metrics_payload(result)
+    json.dumps(payload, allow_nan=False)
+    assert payload["backtest"]["holt_winters"]["mase"] is None
+    assert payload["configuration"]["end"] == cfg.end
+    assert payload["data_fingerprint"]
+    assert payload["code_version"].startswith("sha256:")

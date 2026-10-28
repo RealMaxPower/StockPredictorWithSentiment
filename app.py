@@ -13,13 +13,16 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import os
+from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
 
-from stockpredictor import config, evaluation, news, plotting
-from stockpredictor.pipeline import run_simulation, run_ticker
+from stockpredictor import config, evaluation, forecast, news, plotting
+from stockpredictor.pipeline import record_simulation, run_simulation, run_ticker
+from stockpredictor.reproducibility import code_version
 from stockpredictor.sanitize import escape_markdown, safe_url, sanitize_ticker
+from stockpredictor.store import Store
 
 PRESETS = {
     "Magnificent Seven": "AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA",
@@ -64,8 +67,16 @@ def _news_client():
         return None
 
 
-@st.cache_data(show_spinner=True, ttl=3600)
-def _run(ticker: str, start: str, end: str, page_size: int, sentiment_enabled: bool, has_key: bool):
+@st.cache_data(show_spinner=True, ttl=3600, max_entries=128)
+def _run(
+    ticker: str,
+    start: str,
+    end: str,
+    page_size: int,
+    sentiment_enabled: bool,
+    has_key: bool,
+    implementation: str,
+):
     """Cached wrapper. ``has_key`` is part of the cache key so toggling it re-runs."""
     cfg = config.AppConfig(
         start=start, end=end, page_size=page_size, sentiment_enabled=sentiment_enabled
@@ -74,15 +85,33 @@ def _run(ticker: str, start: str, end: str, page_size: int, sentiment_enabled: b
     return result, cfg
 
 
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=64)
+def _simulate(ticker: str, monthly: pd.Series, cfg: config.AppConfig, implementation: str):
+    """Cache a result and its execution identity; recording stays outside the cache."""
+    return run_simulation(ticker, cfg, monthly=monthly), uuid4().hex
+
+
 def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
     """Render the paper-trading simulation: equity overlay, scorecard, overfit warning."""
     sim_cfg = dataclasses.replace(cfg, sizing_method=sizing)
     try:
-        report = run_simulation(ticker, sim_cfg, monthly=result.monthly)
+        report, execution_id = _simulate(ticker, result.monthly, sim_cfg, code_version())
     except Exception as exc:  # noqa: BLE001 - surface, don't crash the dashboard
         st.warning(f"Simulation unavailable for {ticker}: {exc}")
         return
 
+    if sim_cfg.use_cache:
+        try:
+            with Store(sim_cfg.db_path) as store:
+                # The computation cache spans browser sessions. The database owns
+                # deduplication so reloads and concurrent sessions log it once.
+                record_simulation(report, sim_cfg, store, execution_id=execution_id)
+        except Exception as exc:  # noqa: BLE001 - results survive optional history failures
+            st.warning(f"Experiment history unavailable: {exc}")
+
+    for warning in report.warnings:
+        if warning != config.DISCLAIMER:
+            st.warning(warning)
     st.subheader("Paper-trading simulation (after costs, out-of-sample)")
     if report.scorecard.n_periods < config.MIN_RELIABLE_PERIODS:
         st.warning(
@@ -119,7 +148,8 @@ def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
     st.warning(
         "⚠ Multiple-testing caution: trying many tickers, date ranges, or sizing "
         "methods and keeping the best is **overfitting**. Treat a single green "
-        "scorecard with deep skepticism; the held-out line is the once-touched check. "
+        "scorecard with deep skepticism. Final-period performance is part of the full "
+        "scorecard and is not independent validation. "
         "For monthly single-name timing, **no durable edge after costs is the "
         "expected, honest result.**"
     )
@@ -153,18 +183,24 @@ def _render_result(
         )
         hw = result.backtest.get("holt_winters", {})
         sn = result.backtest.get("seasonal_naive", {})
-        if hw.get("mase") == hw.get("mase"):
+        if hw.get("mase") is not None and hw["mase"] == hw["mase"]:
+            verdict = "comparison unavailable (incomplete folds)"
+            if forecast.comparable_mase(hw, sn):
+                verdict = "beats baseline" if hw["mase"] < sn["mase"] else "worse"
             st.metric(
                 "Backtest MASE (vs seasonal-naive)",
                 f"{hw['mase']:.2f}",
-                "beats baseline" if hw.get("mase", 9) < sn.get("mase", 0) else "worse",
+                verdict,
             )
 
     if result.warnings:
         st.warning("Data-quality notes: " + "; ".join(result.warnings))
 
     if result.backtest:
-        st.subheader("Backtest (lower MASE is better; < 1 beats seasonal-naive)")
+        st.subheader("Backtest (lower MASE is better)")
+        st.caption(
+            "MASE scales error by training seasonal-naive error; compare models on the same folds."
+        )
         st.dataframe(
             {k: {m: round(v, 3) for m, v in d.items()} for k, d in result.backtest.items()}
         )
@@ -241,38 +277,47 @@ def main() -> None:
         sizing = st.selectbox("Position sizing", ["vol", "kelly"], disabled=not simulate)
         go = st.button("Run forecast", type="primary")
 
-    if not go:
+    if not go and not st.session_state.get("forecast_results"):
         st.write("Set parameters in the sidebar and click **Run forecast**.")
         return
 
-    tickers: list[str] = []
-    invalid: list[str] = []
-    for raw in tickers_raw.split(","):
-        if not raw.strip():
-            continue
-        try:
-            tickers.append(sanitize_ticker(raw))
-        except ValueError:
-            invalid.append(raw.strip())
-    if invalid:
-        st.warning("Ignored invalid ticker(s): " + ", ".join(invalid))
-    if not tickers:
-        st.warning("Enter at least one valid ticker.")
-        return
+    if go:
+        tickers: list[str] = []
+        invalid: list[str] = []
+        for raw in tickers_raw.split(","):
+            if not raw.strip():
+                continue
+            try:
+                tickers.append(sanitize_ticker(raw))
+            except ValueError:
+                invalid.append(raw.strip())
+        if invalid:
+            st.warning("Ignored invalid ticker(s): " + ", ".join(invalid))
+        if not tickers:
+            st.warning("Enter at least one valid ticker.")
+            return
 
-    results: dict = {}
-    progress = st.progress(0.0, text="Running forecasts…")
-    for i, tk in enumerate(tickers):
-        try:
-            results[tk] = _run(tk, start, end, page_size, sentiment_enabled, has_key)
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not run {tk}: {exc}")
-        progress.progress((i + 1) / len(tickers), text=f"Ran {tk}")
-    progress.empty()
+        results: dict = {}
+        progress = st.progress(0.0, text="Running forecasts…")
+        for i, tk in enumerate(tickers):
+            try:
+                results[tk] = _run(
+                    tk, start, end, page_size, sentiment_enabled, has_key, code_version()
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not run {tk}: {exc}")
+            progress.progress((i + 1) / len(tickers), text=f"Ran {tk}")
+        progress.empty()
 
+        st.session_state["forecast_results"] = results
+
+    results = st.session_state.get("forecast_results", {})
     if not results:
         return
 
+    st.caption(
+        "Showing the last completed forecast. Click Run forecast to apply ticker, date, or news changes."
+    )
     if len(results) == 1:
         tk, (res, cfg) = next(iter(results.items()))
         _render_result(tk, res, cfg, simulate=simulate, sizing=sizing)

@@ -6,6 +6,8 @@ not manufacture an edge from noise, and must capture a real, lagged one.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -85,6 +87,46 @@ def test_variant_id_is_deterministic_and_sensitive():
     c = strategy.variant_id(config.AppConfig(kelly_fraction=0.5))
     assert a == b
     assert a != c
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"fixed_fee": 5.0},
+        {"initial_capital": 50000.0},
+        {"min_months_seasonal": 36},
+        {"seasonal_periods": 6},
+        {"monthly_agg": "mean"},
+        {"end": "2025-01-01"},
+    ],
+)
+def test_variant_identity_covers_result_changing_configuration(change):
+    cfg = config.AppConfig()
+    assert strategy.variant_id(cfg) != strategy.variant_id(replace(cfg, **change))
+
+
+def test_variant_identity_includes_data_and_code_but_not_output_paths():
+    cfg = config.AppConfig()
+    base = strategy.variant_id(cfg, data_fingerprint="data-a", code_version="code-a")
+    assert base != strategy.variant_id(cfg, data_fingerprint="data-b", code_version="code-a")
+    assert base != strategy.variant_id(cfg, data_fingerprint="data-a", code_version="code-b")
+    assert base == strategy.variant_id(
+        replace(cfg, outdir="elsewhere"), data_fingerprint="data-a", code_version="code-a"
+    )
+
+
+@pytest.mark.parametrize("method", ["vol", "kelly"])
+def test_unavailable_uncertainty_targets_cash(method, caplog):
+    from stockpredictor.forecast import ForecastResult
+    from stockpredictor.signals import signal_from_forecast
+
+    cfg = config.AppConfig(sizing_method=method)
+    history = pd.Series([100.0], index=pd.to_datetime(["2025-01-31"]))
+    point = pd.Series([101.0], index=pd.to_datetime(["2025-02-28"]))
+    fc = ForecastResult(point=point)
+    fn = strategy.build_weight_fn(cfg, signal_fn=lambda _h, _c: signal_from_forecast(fc, 100.0))
+    assert fn(history, cfg) == 0.0
+    assert "uncertainty is unavailable" in caplog.text
 
 
 def test_build_weight_fn_applies_cfg_sizing():

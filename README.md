@@ -20,7 +20,7 @@ question: *would trading on this forecast have made money after costs?* (Usually
 > the honest takeaway from the built-in backtest is usually "treat the wide
 > uncertainty band seriously." This tool is for learning, not trading.
 
-**At a glance:** v0.2 · 16-module Python package · ~120 tests (network mocked) ·
+**At a glance:** v0.2 · modular Python package · regression tests with mocked network clients ·
 CI on 3.10 / 3.11 / 3.12 · CLI + Streamlit dashboard · forecasts run with **no API key**.
 
 ---
@@ -86,9 +86,17 @@ python3 stock_forecast_with_sentiment.py --help
 Set a (free) NewsAPI key to enable sentiment — **optional**; forecasts run without it:
 
 ```bash
-cp .env.example .env   # then edit, or:
 export NEWSAPI_KEY="YOUR_KEY"     # get one at https://newsapi.org
 ```
+
+Neither entry point automatically loads `.env`. The dashboard also accepts
+`NEWSAPI_KEY` in `.streamlit/secrets.toml`.
+
+`--end` is exclusive. Use `--end 2025-01-01` to include December 2024. Forecasting
+uses completed calendar months only: a mid-month end date excludes that partial
+month. Missing interior months stop the run rather than shortening elapsed time.
+The price cache stores complete request snapshots and refreshes historical data
+after its TTL as well, because adjusted prices can change after corporate actions.
 
 ## Usage
 
@@ -111,11 +119,14 @@ Useful flags: `--no-sentiment`, `--sentiment-model {vader,finbert}`, `--no-backt
 command if it's missing; it never falls back to VADER.
 Paper-trading simulation (see [below](#simulated-betting--position-sizing-paper-trading)):
 `--simulate`, `--sizing {vol,kelly}`, `--rf-rate`, `--commission-bps`, `--spread-bps`,
-`--slippage-bps`, `--target-vol`, `--kelly-fraction`, `--holdout`.
+`--slippage-bps`, `--fixed-fee`, `--initial-capital`, `--target-vol`,
+`--kelly-fraction`, `--holdout`. Invalid settings fail before any download.
 
 Each run writes, per ticker, into `stock_plots/YYYY-MM-DD/`:
 `TICKER_forecasts.png`, `TICKER_forecast.html` (interactive), `TICKER_news.json`,
-and `TICKER_metrics.json` (forecast, intervals, backtest, sentiment).
+and `TICKER_metrics.json` (forecast, intervals, backtest, sentiment). HTML embeds
+Plotly for offline viewing. JSON uses `null` for undefined metrics and records the
+configuration, input-data fingerprint, and implementation fingerprint.
 
 ### Dashboard
 
@@ -152,7 +163,7 @@ forecast + intervals  →  signal (μ, σ, confidence)
 Run it from the CLI with `--simulate`:
 
 ```bash
-stock-forecast --tickers AAPL --start 2010-01-01 --end 2024-12-31 \
+stock-forecast --tickers AAPL --start 2010-01-01 --end 2025-01-01 \
   --simulate --sizing vol --rf-rate 0.04 \
   --commission-bps 1 --spread-bps 5 --slippage-bps 5
 ```
@@ -170,8 +181,8 @@ SCORECARD — AAPL (after costs, out-of-sample)
   Strategy CAGR:       +5.1%  | Sharpe +0.41
   Max drawdown:        -22.4%
   Turnover (ann.):     3.2x
-  Variants tried:      4    ⚠ best-of-N is likely overfit; see held-out result below
-  Held-out period:     beat BH=NO, beat RF=YES, CAGR +0.8% over 12 mo (touched once)
+  Variants tried:      4    ⚠ best-of-N is likely overfit
+  Final-period performance: beat BH=NO, beat RF=YES, CAGR +0.8% over 12 mo
   ⚠ Educational demo — not financial advice.
 ```
 
@@ -181,14 +192,18 @@ SCORECARD — AAPL (after costs, out-of-sample)
   timestamps ≤ *t*; it then earns the realized *t→t+1* return it never saw. The
   test suite includes a *leakage tripwire* (shifting the signal one period into the
   future must markedly improve results — if it didn't, the harness would be leaking).
-- **Costs are always on.** Every simulated trade pays commission + half-spread +
-  slippage. There is **no gross-of-costs headline number**, anywhere.
+- **Costs are always on.** Every simulated trade, including rebalancing after price
+  drift, pays commission + half-spread + slippage and any fixed fee. Accounting is
+  in currency units (`--initial-capital 10000` by default); charts normalize wealth
+  to 1. Unaffordable trades are rejected. Missing forecast uncertainty targets cash.
 - **Benchmarked against both** buy-and-hold *and* the risk-free rate, out of sample.
   Raw return is never the result; excess over both is.
-- **Multiple-testing discipline.** Every variant you run is logged to SQLite; the
-  scorecard reports **how many were tried** and warns that the best-looking one is
-  likely overfit. A **held-out final slice** is reported separately as the
-  once-touched check. Do not present the best of N runs as "the result."
+- **Experiment accounting.** CLI and dashboard log configurations and data/code
+  fingerprints to SQLite. The scorecard counts distinct experiments, rather than
+  repeated executions; without history it reports `untracked`. The final-period
+  slice (`--holdout`) is descriptive, is included in the full scorecard, and can be
+  viewed repeatedly. It is **not independent validation**. Freeze a strategy and
+  reserve genuinely unseen data before making that claim.
 - **No durable edge after costs is the expected, honest outcome** for monthly
   single-name timing — not a bug or a failure of the code. The value of this layer
   is *measuring* that truthfully, including (and especially) when the answer is NO.
@@ -196,10 +211,11 @@ SCORECARD — AAPL (after costs, out-of-sample)
 To write up a study honestly, use [`docs/RESULTS_TEMPLATE.md`](docs/RESULTS_TEMPLATE.md):
 it pre-registers your expectation *before* you look at the curves, requires every ticker
 to be reported (no cherry-picking), gates a suspicion checklist behind any good-looking
-result, and makes the limitations section non-optional. A worked example over 20 real
-names lives in [`docs/RESULTS.md`](docs/RESULTS.md), and a pre-registered screen deciding
-*against* building further signal work is recorded in
-[`docs/PHASE5_DECISION.md`](docs/PHASE5_DECISION.md).
+result, and makes the limitations section non-optional. Historical numerical results
+are preserved as superseded archives. Corrected fresh-data runs for all 20 names
+are recorded in [`docs/RESULTS.md`](docs/RESULTS.md) and
+[`docs/PHASE5_DECISION.md`](docs/PHASE5_DECISION.md), with a reproducible snapshot
+workflow. The separate Phase 5 predictability screen remains unvalidated.
 
 ### Known limitation: survivorship bias
 

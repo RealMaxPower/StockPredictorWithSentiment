@@ -92,7 +92,9 @@ def test_format_scorecard_contains_verdict_warning_and_disclaimer():
     assert "Beat buy-and-hold?   NO" in text
     assert "Variants tried:      4" in text
     assert "likely overfit" in text
-    assert "Held-out period:" in text
+    assert "Final-period performance:" in text
+    assert "not an untouched holdout" in text
+    assert "touched once" not in text
     assert config.DISCLAIMER in text
 
 
@@ -111,3 +113,8 @@ def test_small_sample_warning_appears_only_when_few_periods():
     assert short.n_periods < config.MIN_RELIABLE_PERIODS
     assert "SMALL SAMPLE" in evaluation.format_scorecard(short)
     assert "SMALL SAMPLE" not in evaluation.format_scorecard(long)
+
+
+def test_unknown_experiment_history_is_not_reported_as_one_variant():
+    text = evaluation.format_scorecard(_scorecard_with_n(40), variants_tried=None)
+    assert "Variants tried:      untracked" in text

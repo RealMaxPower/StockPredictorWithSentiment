@@ -14,14 +14,13 @@ features — are welcome.
 git clone https://github.com/RealMaxPower/StockPredictorWithSentiment.git
 cd StockPredictorWithSentiment
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,viz,ml]"   # core + dev tools + plotly + scikit-learn
+pip install -e ".[dev,viz,ml,app]"   # includes offline dashboard interaction tests
 ```
 
 Optionally set a NewsAPI key to exercise the sentiment path (everything works
 without it — sentiment is simply disabled):
 
 ```bash
-cp .env.example .env   # then add your key, or:
 export NEWSAPI_KEY="YOUR_KEY"
 ```
 
@@ -37,7 +36,7 @@ export NEWSAPI_KEY="YOUR_KEY"
 
 ## Local checks
 
-These mirror CI (which runs on Python 3.9 / 3.11 / 3.12):
+These mirror CI (which runs on Python 3.10 / 3.11 / 3.12):
 
 ```bash
 ruff check .                 # lint
@@ -60,8 +59,8 @@ ruff check . --fix
 - **Keep the methodology honest.** Bounded sentiment tilt, prediction intervals,
   and backtesting against baselines are core to the project — don't reintroduce
   unbounded multipliers or single-point "predictions" that imply false precision.
-- **Don't commit secrets.** `NEWSAPI_KEY` belongs in your local `.env`
-  (gitignored). See [SECURITY.md](SECURITY.md).
+- **Don't commit secrets.** `NEWSAPI_KEY` belongs in your shell environment or local Streamlit secrets
+  (`.streamlit/secrets.toml` is gitignored). See [SECURITY.md](SECURITY.md).
 - **Type hints + docstrings** on public functions; `mypy` must stay clean.
 
 ## Reporting bugs / requesting features
