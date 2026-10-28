@@ -91,9 +91,7 @@ def _render_simulation(ticker: str, result, cfg, sizing: str) -> None:
             f"range (≥ ~{config.MIN_RELIABLE_PERIODS} months, ideally several years)."
         )
     try:
-        st.plotly_chart(
-            plotting.build_equity_figure(report.result, ticker), use_container_width=True
-        )
+        st.plotly_chart(plotting.build_equity_figure(report.result, ticker), width="stretch")
     except ImportError:
         st.info("Install plotly for the equity overlay (`pip install plotly`).")
 
@@ -141,7 +139,7 @@ def _render_result(
                 ticker,
                 result.sentiment.label(),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         except ImportError:
             st.warning("Install plotly for the interactive chart (`pip install plotly`).")
 
@@ -281,7 +279,7 @@ def main() -> None:
         return
 
     st.subheader("Comparison")
-    st.dataframe(_comparison_table(results), use_container_width=True)
+    st.dataframe(_comparison_table(results), width="stretch")
     labels = [_tab_label(tk) for tk in results]
     for tab, tk in zip(st.tabs(labels), results, strict=True):
         with tab:
