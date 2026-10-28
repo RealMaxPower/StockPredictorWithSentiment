@@ -98,7 +98,7 @@ jobs:
         # CPU build is a fraction of that and is all a text classifier needs.
         run: |
           python -m pip install --upgrade pip
-          pip install "torch>=2.14.0" --index-url https://download.pytorch.org/whl/cpu
+          pip install "torch>=2.14.1" --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[finbert]" pytest
 
       - name: Live FinBERT test
