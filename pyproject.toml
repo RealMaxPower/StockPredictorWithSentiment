@@ -28,7 +28,7 @@ app = ["streamlit>=1.65.0", "plotly>=7.1.0"]
 ml = ["scikit-learn>=1.7.2"]
 finbert = ["transformers>=5.19.0", "torch>=2.14.1"]
 dev = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
     "mypy>=2.4.0",
