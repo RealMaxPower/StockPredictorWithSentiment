@@ -30,7 +30,7 @@ finbert = ["transformers>=5.20.2", "torch>=2.14.1"]
 dev = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "ruff>=0.17.5",
+    "ruff>=0.17.6",
     "mypy>=2.4.0",
     "pip-audit>=2.10.1",
 ]
